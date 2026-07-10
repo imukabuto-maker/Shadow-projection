@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Shadow Art Generator</title>
+<style>
+  :root{
+    --bg: #0e0f12;
+    --panel: #17181c;
+    --panel-2: #1e2025;
+    --line: #2a2c32;
+    --text: #e9e9ec;
+    --dim: #9a9ba3;
+    --accent: #ff7a3d;
+    --mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    --sidebar-w: 340px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;
+    height:100dvh;}
+  #app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;height:100vh;height:100dvh;}
+
+  /* ---- Sidebar ---- */
+  #sidebar{
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+    padding:0 0 40px 0;
+  }
+  #brand{
+    padding:22px 20px 16px 20px;
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
+  }
+  #brand .mark{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:.14em;
+    color:var(--accent);
+    text-transform:uppercase;
+  }
+  #brand h1{
+    font-size:18px;
+    margin:6px 0 4px 0;
+    font-weight:600;
+    letter-spacing:-0.01em;
+  }
+  #brand p{margin:0;font-size:12px;color:var(--dim);line-height:1.5;}
+  #closeSidebar{
+    display:none;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    width:34px;height:34px;
+    border-radius:8px;
+    font-size:16px;
+    flex:none;
+  }
+
+  .section{
+    padding:16px 20px;
+    border-bottom:1px solid var(--line);
+  }
+  .section-title{
+    font-family:var(--mono);
+    font-size:10.5px;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:var(--dim);
+    margin:0 0 12px 0;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .section-title .n{color:var(--accent);}
+
+  #dropzone{
+    border:1px dashed var(--line);
+    border-radius:6px;
+    padding:18px 14px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s, background .15s;
+    font-size:12.5px;
+    color:var(--dim);
+  }
+  #dropzone:hover, #dropzone.drag{
+    border-color:var(--accent);
+    background:rgba(255,122,61,0.05);
+    color:var(--text);
+  }
+  #dropzone strong{color:var(--text);display:block;font-size:13px;margin-bottom:4px;}
+  #fileMeta{font-size:11px;color:var(--accent);margin-top:8px;font-family:var(--mono);min-height:14px;}
+
+  .field{margin-bottom:16px;}
+  .field:last-child{margin-bottom:0;}
+  .field label{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    font-size:12px;
+    color:var(--dim);
+    margin-bottom:8px;
+  }
+  .field label .val{
+    font-family:var(--mono);
+    color:var(--text);
+    background:var(--panel-2);
+    padding:1px 6px;
+    border-radius:3px;
+    font-size:11.5px;
+  }
+  .row{display:flex;gap:8px;}
+  .row .field{flex:1;}
+
+  input[type=range]{
+    -webkit-appearance:none;
+    appearance:none;
+    width:100%;
+    height:28px;
+    background:transparent;
+    outline:none;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:4px;background:var(--line);border-radius:2px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;
+    margin-top:-9px;
+    width:22px;height:22px;
+    border-radius:50%;
+    background:var(--accent);
+    cursor:pointer;
+    border:3px solid #0e0f12;
+  }
+  input[type=range]::-moz-range-track{height:4px;background:var(--line);border-radius:2px;}
+  input[type=range]::-moz-range-thumb{
+    width:20px;height:20px;
+    border-radius:50%;
+    background:var(--accent);
+    cursor:pointer;
+    border:3px solid #0e0f12;
+  }
+
+  select, input[type=number]{
+    width:100%;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:10px 8px;
+    border-radius:4px;
+    font-size:13px;
+    font-family:var(--sans);
+  }
+  select:focus, input[type=number]:focus{outline:1px solid var(--accent);}
+
+  .radiogroup{display:flex;gap:6px;}
+  .radiogroup button{
+    flex:1;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--dim);
+    padding:11px 6px;
+    border-radius:4px;
+    font-size:12.5px;
+    cursor:pointer;
+    font-family:var(--sans);
+  }
+  .radiogroup button.active{
+    border-color:var(--accent);
+    color:var(--accent);
+    background:rgba(255,122,61,0.08);
+  }
+
+  #generateBtn{
+    width:100%;
+    background:var(--accent);
+    color:#1a0d05;
+    border:none;
+    padding:14px;
+    border-radius:6px;
+    font-size:13.5px;
+    font-weight:700;
+    letter-spacing:.02em;
+    cursor:pointer;
+    margin-top:4px;
+  }
+  #generateBtn:active{background:#ff8c57;}
+  #generateBtn:disabled{background:var(--line);color:var(--dim);cursor:not-allowed;}
+
+  .exportRow{display:flex;gap:8px;margin-top:10px;}
+  .exportRow button{
+    flex:1;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    color:var(--text);
+    padding:12px;
+    border-radius:6px;
+    font-size:12.5px;
+    cursor:pointer;
+  }
+  .exportRow button:active:not(:disabled){border-color:var(--accent);color:var(--accent);}
+  .exportRow button:disabled{color:var(--dim);cursor:not-allowed;}
+
+  #status{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--dim);
+    padding:14px 20px 28px 20px;
+    line-height:1.6;
+  }
+  #status .ok{color:#5ec98f;}
+  #status .warn{color:var(--accent);}
+
+  .hint{font-size:11px;color:var(--dim);line-height:1.5;margin-top:8px;}
+
+  /* ---- Viewport ---- */
+  #viewport{position:relative;background:#0a0a0c;touch-action:none;}
+  #canvasHolder{width:100%;height:100%;touch-action:none;}
+  #viewport canvas{display:block;touch-action:none;}
+
+  #hud{
+    position:absolute;top:16px;left:18px;
+    font-family:var(--mono);
+    font-size:11px;
+    color:rgba(255,255,255,0.55);
+    line-height:1.6;
+    pointer-events:none;
+  }
+  #hud .badge{
+    display:inline-block;
+    background:rgba(255,122,61,0.15);
+    color:var(--accent);
+    border:1px solid rgba(255,122,61,0.4);
+    padding:2px 8px;
+    border-radius:20px;
+    font-size:10px;
+    letter-spacing:.08em;
+    margin-bottom:6px;
+  }
+
+  #legend{
+    position:absolute;bottom:16px;left:18px;
+    font-family:var(--mono);
+    font-size:10.5px;
+    color:rgba(255,255,255,0.4);
+    display:flex;
+    gap:16px;
+    flex-wrap:wrap;
+    max-width:80%;
+  }
+  #legend span{display:flex;align-items:center;gap:6px;}
+  #legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+
+  #menuBtn{
+    display:none;
+    position:absolute;
+    top:14px; right:14px;
+    z-index:40;
+    width:48px;height:48px;
+    border-radius:10px;
+    background:rgba(23,24,28,0.85);
+    border:1px solid var(--line);
+    color:var(--text);
+    font-size:20px;
+    backdrop-filter:blur(6px);
+    touch-action:manipulation;
+    cursor:pointer;
+  }
+  #closeSidebar{touch-action:manipulation; cursor:pointer;}
+
+  #sidebarBackdrop{display:none;}
+
+  ::-webkit-scrollbar{width:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#33353c;border-radius:4px;}
+
+  /* ---------------------------------------------------------------- */
+  /* Mobile / iPhone layout: sidebar becomes a full-screen drawer      */
+  /* ---------------------------------------------------------------- */
+  @media (max-width: 860px){
+    #app{grid-template-columns:1fr; grid-template-rows:1fr;}
+    #sidebar{
+      position:fixed;
+      top:0; left:0; bottom:0;
+      width:min(88vw, 380px);
+      z-index:30;
+      transform:translateX(-100%);
+      transition:transform .22s ease;
+      box-shadow:20px 0 40px rgba(0,0,0,0.5);
+      padding-bottom:env(safe-area-inset-bottom);
+    }
+    #sidebar.open{transform:translateX(0);}
+    #closeSidebar{display:block;}
+    #menuBtn{display:block;}
+    #sidebarBackdrop{
+      display:none;
+      position:fixed; inset:0;
+      background:rgba(0,0,0,0.5);
+      z-index:25;
+    }
+    #sidebarBackdrop.open{display:block;}
+    #viewport{width:100%; height:100%;}
+    #legend{display:none;}
+    #hud{font-size:10px;}
+    .exportRow{flex-direction:column;}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="sidebarBackdrop"></div>
+  <div id="sidebar">
+    <div id="brand">
+      <div>
+        <div class="mark">Parametric // 001</div>
+        <h1>Shadow Art Generator</h1>
+        <p>Upload a monochrome silhouette. Tune the light &amp; wall geometry, then export laser-cut-ready SVGs for acrylic.</p>
+      </div>
+      <button id="closeSidebar">✕</button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Silhouette</div>
+      <div id="dropzone">
+        <strong>Tap to choose SVG</strong>
+        or drop a file (desktop)
+        <div id="fileMeta">using default placeholder shape</div>
+      </div>
+      <input type="file" id="fileInput" accept=".svg,image/svg+xml" style="display:none">
+    </div>
+
+    <div class="section">
+      <div class="section-title">Shadow Size &amp; Placement <span class="n">01</span></div>
+      <div class="row">
+        <div class="field">
+          <label>Width <span class="val" id="v_shadowW">120</span> mm</label>
+          <input type="range" id="s_shadowW" min="20" max="400" step="1" value="120">
+        </div>
+        <div class="field">
+          <label>Length <span class="val" id="v_shadowL">120</span> mm</label>
+          <input type="range" id="s_shadowL" min="20" max="400" step="1" value="120">
+        </div>
+      </div>
+      <div class="field">
+        <label>Rotation <span class="val" id="v_rot">0</span>°</label>
+        <input type="range" id="s_rot" min="0" max="360" step="1" value="0">
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>X offset <span class="val" id="v_offX">0</span> mm</label>
+          <input type="range" id="s_offX" min="-150" max="150" step="1" value="0">
+        </div>
+        <div class="field">
+          <label>Y offset <span class="val" id="v_offY">0</span> mm</label>
+          <input type="range" id="s_offY" min="-150" max="150" step="1" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Shadow Wall <span class="n">02</span></div>
+      <div class="field">
+        <label>Shape</label>
+        <div class="radiogroup">
+          <button data-wall="oval" class="active">Oval</button>
+          <button data-wall="rect">Rectangle</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Wall width <span class="val" id="v_wallW">220</span> mm</label>
+          <input type="range" id="s_wallW" min="60" max="500" step="1" value="220">
+        </div>
+        <div class="field">
+          <label>Wall length <span class="val" id="v_wallL">220</span> mm</label>
+          <input type="range" id="s_wallL" min="60" max="500" step="1" value="220">
+        </div>
+      </div>
+      <div class="field">
+        <label>Wall (acrylic) thickness <span class="val" id="v_wallT">4</span> mm</label>
+        <input type="range" id="s_wallT" min="2" max="15" step="0.5" value="4">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Light &amp; Mount <span class="n">03</span></div>
+      <div class="field">
+        <label>Light source distance <span class="val" id="v_light">180</span> mm</label>
+        <input type="range" id="s_light" min="40" max="500" step="1" value="180">
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Hole diameter <span class="val" id="v_holeD">6</span> mm</label>
+          <input type="range" id="s_holeD" min="0" max="20" step="0.5" value="6">
+        </div>
+        <div class="field">
+          <label>Hole inset <span class="val" id="v_holeInset">14</span> mm</label>
+          <input type="range" id="s_holeInset" min="4" max="40" step="1" value="14">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <button id="generateBtn">Generate cut layout</button>
+      <div class="exportRow">
+        <button id="exportSvg" disabled>Download .SVG (laser-cut)</button>
+      </div>
+      <div class="hint">Exports two true-to-size (mm) vector panels: the silhouette piece and the backing wall with mount holes — ready to send to a laser cutter for acrylic.</div>
+    </div>
+
+    <div id="status">initializing viewport…</div>
+  </div>
+
+  <div id="viewport">
+    <button id="menuBtn">☰</button>
+    <div id="canvasHolder"></div>
+    <div id="hud">
+      <div class="badge">LIVE SHADOW MAP</div><br>
+      one finger: orbit · two fingers: pinch/pan
+    </div>
+    <div id="legend">
+      <span><i style="background:#3d4048"></i> print bed</span>
+      <span><i style="background:#c96a3d"></i> silhouette panel</span>
+      <span><i style="background:#8f9199"></i> shadow wall</span>
+      <span><i style="background:#ffe08a"></i> light source</span>
+    </div>
+  </div>
+</div>
+
+<!--
+  IMPORTANT: these are loaded as classic (non-module) scripts on purpose.
+  ES module <script type="module"> imports are blocked by Safari/WebKit when
+  a page is opened as a local file (file://) instead of served over http(s) —
+  this is exactly what happens when you AirDrop this file or open it from the
+  Files app on an iPhone. That silently killed ALL JavaScript on the page,
+  including the menu button. Classic <script src> tags are not subject to
+  that restriction, so this version works both from a real server and when
+  opened directly as a local file.
+-->
+<script src="https://unpkg.com/three@0.147.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://unpkg.com/three@0.147.0/examples/js/loaders/SVGLoader.js"></script>
+<script src="https://unpkg.com/three@0.147.0/examples/js/utils/BufferGeometryUtils.js"></script>
+
+<script>
+"use strict";
+const OrbitControls = THREE.OrbitControls;
+const SVGLoader = THREE.SVGLoader;
+const mergeGeometries = (geoms, useGroups) => THREE.BufferGeometryUtils.mergeBufferGeometries(geoms, useGroups);
+
+// ---------------------------------------------------------------------------
+// Constants (internal, not user-exposed)
+// ---------------------------------------------------------------------------
+const BLOCKER_THICKNESS = 3;      // mm, visual depth of the silhouette panel in the 3D preview
+const STANDOFF = 22;              // mm, gap between the silhouette panel and the wall (acrylic stand height)
+const STRUT_RADIUS = 2.2;         // mm, preview-only support struts (visual, not exported)
+
+const statusEl = document.getElementById('status');
+function setStatus(html, cls){ statusEl.innerHTML = `<span class="${cls||''}">${html}</span>`; }
+
+// ---------------------------------------------------------------------------
+// Mobile drawer (sidebar) controls
+// ---------------------------------------------------------------------------
+const sidebar = document.getElementById('sidebar');
+const backdrop = document.getElementById('sidebarBackdrop');
+const menuBtn = document.getElementById('menuBtn');
+const closeSidebarBtn = document.getElementById('closeSidebar');
+const mobileMQ = window.matchMedia('(max-width: 860px)');
+function openSidebar(){ sidebar.classList.add('open'); backdrop.classList.add('open'); }
+function closeSidebar(){ sidebar.classList.remove('open'); backdrop.classList.remove('open'); }
+function toggleSidebar(){ sidebar.classList.contains('open') ? closeSidebar() : openSidebar(); }
+// click covers mouse + tap-synthesized clicks; pointerup is a fallback in case
+// a touch's synthetic click gets swallowed by iOS in some webview contexts.
+menuBtn.addEventListener('click', toggleSidebar);
+menuBtn.addEventListener('pointerup', (e)=>{ e.preventDefault(); toggleSidebar(); });
+closeSidebarBtn.addEventListener('click', closeSidebar);
+closeSidebarBtn.addEventListener('pointerup', (e)=>{ e.preventDefault(); closeSidebar(); });
+backdrop.addEventListener('click', closeSidebar);
+// Keep sidebar state correct if the viewport crosses the mobile breakpoint
+// (e.g. iPhone rotated, or a webview resized) instead of only checking once.
+function syncSidebarToViewport(){
+  if(!mobileMQ.matches) openSidebar(); else closeSidebar();
+}
+syncSidebarToViewport();
+mobileMQ.addEventListener ? mobileMQ.addEventListener('change', syncSidebarToViewport)
+                           : mobileMQ.addListener(syncSidebarToViewport); // Safari <14 fallback
+
+// ---------------------------------------------------------------------------
+// Renderer / Scene / Camera
+// ---------------------------------------------------------------------------
+const holder = document.getElementById('canvasHolder');
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding; // three@0.147 API (pre-"color space" rename)
+holder.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0c);
+scene.fog = new THREE.Fog(0x0a0a0c, 500, 1400);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 1, 5000);
+camera.position.set(260, 220, 340);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 60, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+// Touch gesture mapping for phones: one finger rotate, two finger dolly+pan
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+function resize(){
+  const w = holder.clientWidth, h = holder.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w/h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', ()=>setTimeout(resize, 200));
+
+scene.add(new THREE.AmbientLight(0x404050, 0.9));
+const hemi = new THREE.HemisphereLight(0x555566, 0x0a0a0a, 0.4);
+scene.add(hemi);
+
+const grid = new THREE.GridHelper(600, 30, 0x3d4048, 0x24262b);
+grid.position.y = 0;
+scene.add(grid);
+const bedPlane = new THREE.Mesh(
+  new THREE.PlaneGeometry(600,600),
+  new THREE.ShadowMaterial({opacity:0.35})
+);
+bedPlane.rotation.x = -Math.PI/2;
+bedPlane.receiveShadow = true;
+bedPlane.position.y = -0.05;
+scene.add(bedPlane);
+
+const spot = new THREE.SpotLight(0xfff2df, 900, 0, Math.PI/6, 0.02, 1.4);
+spot.castShadow = true;
+spot.shadow.mapSize.set(2048,2048);
+spot.shadow.bias = -0.0015;
+scene.add(spot);
+scene.add(spot.target);
+
+const bulbMat = new THREE.MeshBasicMaterial({color:0xffe08a});
+const bulb = new THREE.Mesh(new THREE.SphereGeometry(4,16,16), bulbMat);
+scene.add(bulb);
+
+const blockerGroup = new THREE.Group();
+const wallGroup = new THREE.Group();
+const strutGroup = new THREE.Group();
+scene.add(blockerGroup, wallGroup, strutGroup);
+
+const blockerMat = new THREE.MeshStandardMaterial({color:0xc96a3d, roughness:0.6, metalness:0.05});
+const wallMat = new THREE.MeshStandardMaterial({color:0x8f9199, roughness:0.85, metalness:0.02, side:THREE.DoubleSide});
+const strutMat = new THREE.MeshStandardMaterial({color:0xc96a3d, roughness:0.6});
+
+// ---------------------------------------------------------------------------
+// Params
+// ---------------------------------------------------------------------------
+const params = {
+  shadowW: 120, shadowL: 120, rot: 0, offX: 0, offY: 0,
+  wallType: 'oval', wallW: 220, wallL: 220, wallT: 4,
+  lightDist: 180, holeD: 6, holeInset: 14
+};
+
+// ---------------------------------------------------------------------------
+// Silhouette shapes (default placeholder, replaced on SVG upload)
+// ---------------------------------------------------------------------------
+let silhouetteShapes = defaultShapes();
+let svgBounds = boundsOfShapes(silhouetteShapes);
+
+function defaultShapes(){
+  const shape = new THREE.Shape();
+  const spikes = 5, outerR = 50, innerR = 20;
+  for(let i=0;i<spikes*2;i++){
+    const r = i%2===0 ? outerR : innerR;
+    const a = (i/(spikes*2)) * Math.PI*2 - Math.PI/2;
+    const x = Math.cos(a)*r, y = Math.sin(a)*r;
+    if(i===0) shape.moveTo(x,y); else shape.lineTo(x,y);
+  }
+  shape.closePath();
+  return [shape];
+}
+
+function boundsOfShapes(shapes){
+  const box = new THREE.Box2(new THREE.Vector2(Infinity,Infinity), new THREE.Vector2(-Infinity,-Infinity));
+  shapes.forEach(s=>{
+    const pts = s.getPoints(64);
+    pts.forEach(p=>box.expandByPoint(p));
+  });
+  return box;
+}
+
+// ---------------------------------------------------------------------------
+// SVG upload handling
+// ---------------------------------------------------------------------------
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const fileMeta = document.getElementById('fileMeta');
+
+dropzone.addEventListener('click', ()=>fileInput.click());
+['dragover','dragenter'].forEach(evt=>dropzone.addEventListener(evt, e=>{e.preventDefault(); dropzone.classList.add('drag');}));
+['dragleave','dragend','drop'].forEach(evt=>dropzone.addEventListener(evt, e=>{e.preventDefault(); dropzone.classList.remove('drag');}));
+dropzone.addEventListener('drop', e=>{
+  const f = e.dataTransfer.files[0];
+  if(f) handleFile(f);
+});
+fileInput.addEventListener('change', e=>{
+  const f = e.target.files[0];
+  if(f) handleFile(f);
+});
+
+function handleFile(file){
+  if(!/\.svg$/i.test(file.name)){
+    setStatus('Please upload a .svg file.', 'warn');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const loader = new SVGLoader();
+      const data = loader.parse(reader.result);
+      const shapes = [];
+      data.paths.forEach(path=>{
+        const sh = SVGLoader.createShapes(path);
+        shapes.push(...sh);
+      });
+      if(shapes.length === 0){
+        setStatus('No fillable paths found in that SVG.', 'warn');
+        return;
+      }
+      silhouetteShapes = shapes;
+      svgBounds = boundsOfShapes(shapes);
+      fileMeta.textContent = `${file.name} · ${shapes.length} path(s)`;
+      setStatus('Silhouette loaded. Adjust parameters — the shadow updates live.', 'ok');
+      rebuildScene();
+    }catch(err){
+      console.error(err);
+      setStatus('Could not parse that SVG.', 'warn');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ---------------------------------------------------------------------------
+// Wall type toggle
+// ---------------------------------------------------------------------------
+document.querySelectorAll('[data-wall]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('[data-wall]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    params.wallType = btn.dataset.wall;
+    rebuildScene();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Slider bindings
+// ---------------------------------------------------------------------------
+function bind(sliderId, valId, key, fmt){
+  const slider = document.getElementById(sliderId);
+  const valEl = document.getElementById(valId);
+  slider.addEventListener('input', ()=>{
+    params[key] = parseFloat(slider.value);
+    valEl.textContent = fmt ? fmt(params[key]) : params[key];
+    rebuildScene();
+  });
+}
+bind('s_shadowW','v_shadowW','shadowW');
+bind('s_shadowL','v_shadowL','shadowL');
+bind('s_rot','v_rot','rot');
+bind('s_offX','v_offX','offX');
+bind('s_offY','v_offY','offY');
+bind('s_wallW','v_wallW','wallW');
+bind('s_wallL','v_wallL','wallL');
+bind('s_wallT','v_wallT','wallT', v=>v.toFixed(1));
+bind('s_light','v_light','lightDist');
+bind('s_holeD','v_holeD','holeD', v=>v.toFixed(1));
+bind('s_holeInset','v_holeInset','holeInset');
+
+// ---------------------------------------------------------------------------
+// Geometry construction (3D preview only)
+// ---------------------------------------------------------------------------
+function clearGroup(g){
+  while(g.children.length){
+    const c = g.children.pop();
+    c.geometry && c.geometry.dispose();
+  }
+}
+
+function buildBlockerGeometry(targetW, targetL){
+  const w = svgBounds.max.x - svgBounds.min.x || 1;
+  const h = svgBounds.max.y - svgBounds.min.y || 1;
+  const cx = (svgBounds.max.x + svgBounds.min.x)/2;
+  const cy = (svgBounds.max.y + svgBounds.min.y)/2;
+  const scaleX = targetW / w;
+  const scaleY = targetL / h;
+
+  const geoms = [];
+  silhouetteShapes.forEach(s=>{
+    const geo = new THREE.ExtrudeGeometry(s, {depth: BLOCKER_THICKNESS/Math.max(scaleX,scaleY,0.0001), bevelEnabled:false});
+    geo.translate(-cx, -cy, 0);
+    geo.scale(scaleX, scaleY, 1);
+    geoms.push(geo);
+  });
+  const merged = geoms.length>1 ? mergeGeometries(geoms, false) : geoms[0];
+  merged.computeVertexNormals();
+  return merged;
+}
+
+function ovalShapeWithHoles(width, length, holeD, holeInset){
+  const rx = width/2, ry = length/2;
+  const shape = new THREE.Shape();
+  shape.absellipse(0,0, rx, ry, 0, Math.PI*2, false, 0);
+  addMountHoles(shape, rx, ry, holeD, holeInset);
+  return shape;
+}
+function rectShapeWithHoles(width, length, holeD, holeInset){
+  const hw = width/2, hl = length/2;
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw,-hl); shape.lineTo(hw,-hl); shape.lineTo(hw,hl); shape.lineTo(-hw,hl); shape.closePath();
+  addMountHoles(shape, hw, hl, holeD, holeInset);
+  return shape;
+}
+function addMountHoles(shape, halfW, halfL, holeD, holeInset){
+  if(holeD <= 0) return;
+  const r = holeD/2;
+  const positions = [
+    [-(halfW-holeInset), (halfL-holeInset)],
+    [ (halfW-holeInset), (halfL-holeInset)]
+  ];
+  positions.forEach(([hx,hy])=>{
+    const hole = new THREE.Path();
+    hole.absarc(hx, hy, r, 0, Math.PI*2, false);
+    shape.holes.push(hole);
+  });
+}
+
+function currentWallShape(){
+  return params.wallType === 'oval'
+    ? ovalShapeWithHoles(params.wallW, params.wallL, params.holeD, params.holeInset)
+    : rectShapeWithHoles(params.wallW, params.wallL, params.holeD, params.holeInset);
+}
+
+function buildWallGeometry(){
+  const shape = currentWallShape();
+  const geo = new THREE.ExtrudeGeometry(shape, {depth: params.wallT, bevelEnabled:false});
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---------------------------------------------------------------------------
+// Scene layout (see previous version's comment block for the physics —
+// unchanged): similar-triangle scaling from shadow size -> panel size.
+// ---------------------------------------------------------------------------
+let lastBlockerMesh = null, lastWallMesh = null, lastStruts = [];
+let currentBlockerW = 0, currentBlockerL = 0;
+
+function rebuildScene(){
+  clearGroup(blockerGroup);
+  clearGroup(wallGroup);
+  clearGroup(strutGroup);
+
+  const lightToWall = params.lightDist + STANDOFF;
+  const scaleRatio = params.lightDist / lightToWall;
+
+  const blockerW = Math.max(4, params.shadowW * scaleRatio);
+  const blockerL = Math.max(4, params.shadowL * scaleRatio);
+  currentBlockerW = blockerW; currentBlockerL = blockerL;
+  const blockerOffX = params.offX * scaleRatio;
+  const blockerOffY = params.offY * scaleRatio;
+
+  const wallGeo = buildWallGeometry();
+  const wallMesh = new THREE.Mesh(wallGeo, wallMat);
+  wallMesh.castShadow = false;
+  wallMesh.receiveShadow = true;
+  wallMesh.position.set(0, params.wallL/2 + 40, -params.wallT);
+  wallGroup.add(wallMesh);
+  lastWallMesh = wallMesh;
+
+  const blockerGeo = buildBlockerGeometry(blockerW, blockerL);
+  const blockerMesh = new THREE.Mesh(blockerGeo, blockerMat);
+  blockerMesh.castShadow = true;
+  blockerMesh.receiveShadow = false;
+  blockerMesh.rotation.z = -THREE.MathUtils.degToRad(params.rot);
+  blockerMesh.position.set(blockerOffX, params.wallL/2 + 40 + blockerOffY, STANDOFF);
+  blockerGroup.add(blockerMesh);
+  lastBlockerMesh = blockerMesh;
+
+  lastStruts = [];
+  const wallCenterY = params.wallL/2 + 40;
+  const strutTargets = [
+    new THREE.Vector3(blockerMesh.position.x - blockerW*0.28, blockerMesh.position.y + blockerL*0.32, STANDOFF),
+    new THREE.Vector3(blockerMesh.position.x + blockerW*0.28, blockerMesh.position.y + blockerL*0.32, STANDOFF),
+  ];
+  strutTargets.forEach(pt=>{
+    const wallPt = new THREE.Vector3(pt.x, pt.y, 0);
+    const dir = new THREE.Vector3().subVectors(pt, wallPt);
+    const len = dir.length();
+    const cyl = new THREE.CylinderGeometry(STRUT_RADIUS, STRUT_RADIUS, len, 12);
+    cyl.translate(0, len/2, 0);
+    cyl.rotateX(Math.PI/2);
+    const mesh = new THREE.Mesh(cyl, strutMat);
+    mesh.position.copy(wallPt);
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    strutGroup.add(mesh);
+    lastStruts.push(mesh);
+  });
+
+  const lightPos = new THREE.Vector3(0, wallCenterY, STANDOFF + params.lightDist);
+  spot.position.copy(lightPos);
+  spot.target.position.set(0, wallCenterY, 0);
+  spot.target.updateMatrixWorld();
+  bulb.position.copy(lightPos);
+  spot.distance = params.lightDist + STANDOFF + 200;
+  const coverage = Math.max(params.wallW, params.wallL, params.shadowW, params.shadowL);
+  spot.angle = Math.min(Math.PI/2.1, Math.atan((coverage*0.75) / params.lightDist));
+  spot.shadow.camera.near = 1;
+  spot.shadow.camera.far = params.lightDist + STANDOFF + 100;
+  spot.shadow.focus = 1;
+  spot.shadow.camera.updateProjectionMatrix();
+
+  controls.target.set(0, wallCenterY*0.6, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Generate / finalize + SVG (laser-cut) export
+// ---------------------------------------------------------------------------
+let cutReady = false;
+const generateBtn = document.getElementById('generateBtn');
+const exportSvgBtn = document.getElementById('exportSvg');
+
+function shapeToPathD(shape, segments){
+  segments = segments || 128;
+  let d = '';
+  const outer = shape.getPoints(segments);
+  d += pointsToD(outer);
+  (shape.holes||[]).forEach(hole=>{
+    d += ' ' + pointsToD(hole.getPoints(segments));
+  });
+  return d;
+}
+function pointsToD(pts){
+  if(pts.length === 0) return '';
+  let d = `M ${pts[0].x.toFixed(3)} ${pts[0].y.toFixed(3)} `;
+  for(let i=1;i<pts.length;i++) d += `L ${pts[i].x.toFixed(3)} ${pts[i].y.toFixed(3)} `;
+  d += 'Z';
+  return d;
+}
+
+function buildBlockerCutShape(){
+  // Scale/rotate the raw silhouette to final cut size — flat 2D, no extrusion.
+  const w = svgBounds.max.x - svgBounds.min.x || 1;
+  const h = svgBounds.max.y - svgBounds.min.y || 1;
+  const cx = (svgBounds.max.x + svgBounds.min.x)/2;
+  const cy = (svgBounds.max.y + svgBounds.min.y)/2;
+  const scaleX = currentBlockerW / w;
+  const scaleY = currentBlockerL / h;
+  const rotRad = -THREE.MathUtils.degToRad(params.rot);
+  const cosR = Math.cos(rotRad), sinR = Math.sin(rotRad);
+
+  const transformShape = (shape)=>{
+    const out = new THREE.Shape();
+    const tp = (pt)=>{
+      let x = (pt.x - cx) * scaleX;
+      let y = (pt.y - cy) * scaleY;
+      const rx = x*cosR - y*sinR;
+      const ry = x*sinR + y*cosR;
+      return new THREE.Vector2(rx, ry);
+    };
+    const pts = shape.getPoints(128).map(tp);
+    out.moveTo(pts[0].x, pts[0].y);
+    for(let i=1;i<pts.length;i++) out.lineTo(pts[i].x, pts[i].y);
+    out.closePath();
+    (shape.holes||[]).forEach(hole=>{
+      const hp = hole.getPoints(64).map(tp);
+      const hpath = new THREE.Path();
+      hpath.moveTo(hp[0].x, hp[0].y);
+      for(let i=1;i<hp.length;i++) hpath.lineTo(hp[i].x, hp[i].y);
+      hpath.closePath();
+      out.holes.push(hpath);
+    });
+    return out;
+  };
+  return silhouetteShapes.map(transformShape);
+}
+
+generateBtn.addEventListener('click', ()=>{
+  try{
+    // Validate geometry builds cleanly (also refreshes currentBlockerW/L)
+    rebuildScene();
+    buildBlockerCutShape();
+    currentWallShape();
+    cutReady = true;
+    exportSvgBtn.disabled = false;
+    setStatus(
+      `Cut layout ready ✓<br>` +
+      `Silhouette panel: ${currentBlockerW.toFixed(1)} × ${currentBlockerL.toFixed(1)} mm<br>` +
+      `Wall panel: ${params.wallW.toFixed(1)} × ${params.wallL.toFixed(1)} mm @ ${params.wallT.toFixed(1)} mm thick<br>` +
+      `Standoff (spacer height): ${STANDOFF} mm — ready to export.`,
+      'ok'
+    );
+  }catch(err){
+    console.error(err);
+    setStatus('Could not build the cut layout — check the console.', 'warn');
+  }
+});
+
+function buildCombinedSVG(){
+  const margin = 20;
+  const blockerShapes = buildBlockerCutShape();
+  const wShape = currentWallShape();
+
+  // Blocker bounds (post transform, local coords centered at 0,0)
+  const bBounds = new THREE.Box2(new THREE.Vector2(Infinity,Infinity), new THREE.Vector2(-Infinity,-Infinity));
+  blockerShapes.forEach(s=> s.getPoints(128).forEach(p=>bBounds.expandByPoint(p)));
+  const bW = bBounds.max.x - bBounds.min.x, bH = bBounds.max.y - bBounds.min.y;
+
+  const wW = params.wallW, wH = params.wallL;
+
+  const totalW = Math.max(bW, wW) + margin*2;
+  const totalH = bH + wH + margin*3 + 30; // +30 for label text rows
+
+  let paths = '';
+  // Wall panel, placed at top, centered horizontally
+  const wallCx = totalW/2, wallCy = margin + 14 + wH/2;
+  paths += `<g transform="translate(${wallCx},${wallCy})" fill="none" stroke="#000000" stroke-width="0.1">
+    <path d="${shapeToPathD(wShape)}"/>
+  </g>`;
+  paths += `<text x="${wallCx - wW/2}" y="${wallCy - wH/2 - 5}" font-family="monospace" font-size="6" fill="#000">WALL — ${wW.toFixed(1)} x ${wH.toFixed(1)} x ${params.wallT.toFixed(1)}mm — qty 1</text>`;
+
+  // Blocker panel, placed below
+  const blockCx = totalW/2, blockCy = margin*2 + 14 + wH + 16 + bH/2;
+  let blockerPaths = '';
+  blockerShapes.forEach(s=>{ blockerPaths += `<path d="${shapeToPathD(s)}"/>`; });
+  paths += `<g transform="translate(${blockCx - (bBounds.min.x+bBounds.max.x)/2},${blockCy - (bBounds.min.y+bBounds.max.y)/2})" fill="none" stroke="#000000" stroke-width="0.1">
+    ${blockerPaths}
+  </g>`;
+  paths += `<text x="${blockCx - bW/2}" y="${blockCy - bH/2 - 5}" font-family="monospace" font-size="6" fill="#000">SILHOUETTE — ${bW.toFixed(1)} x ${bH.toFixed(1)} x ${BLOCKER_THICKNESS}mm — qty 1</text>`;
+
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}mm" height="${totalH}mm" viewBox="0 0 ${totalW} ${totalH}">
+  <desc>Shadow Art laser-cut layout. Units: millimeters, 1 SVG unit = 1mm. Black hairlines = cut paths. Assemble with ${STANDOFF}mm standoffs/spacers between silhouette panel and wall panel, aligned to the mount holes.</desc>
+  ${paths}
+</svg>`;
+  return svg;
+}
+
+function downloadBlob(content, filename, type){
+  const blob = new Blob([content], {type});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+exportSvgBtn.addEventListener('click', ()=>{
+  if(!cutReady) return;
+  const svg = buildCombinedSVG();
+  downloadBlob(svg, 'shadow-art-cutfiles.svg', 'image/svg+xml');
+});
+
+// ---------------------------------------------------------------------------
+// Render loop
+// ---------------------------------------------------------------------------
+function animate(){
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+resize();
+rebuildScene();
+animate();
+setStatus('Viewport ready. Using a placeholder star — upload an SVG to replace it.');
+</script>
+</body>
+</html>

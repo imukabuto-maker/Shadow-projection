@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadow Box — Anamorphic Wall-Wash Generator</title>
+<meta name="description" content="Design and export laser-cut anamorphic shadow projection boxes: upload a silhouette, tune a single-LED wall projection, and download SVG/DXF/PDF cut files.">
+<meta name="theme-color" content="#0a0e10">
+<meta property="og:title" content="Shadow Box — Anamorphic Wall-Wash Generator">
+<meta property="og:description" content="Turn any silhouette into a laser-cut, single-LED shadow projection box. Live preview + SVG/DXF/PDF export.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230a0e10'/%3E%3Ccircle cx='50' cy='48' r='9' fill='%23ffcc55'/%3E%3Cpath d='M20 78 Q35 40 50 78 Q65 40 80 78Z' fill='%232dd9b0'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+<style>
+  :root{
+    --bg:#0a0e10; --panel:#12181a; --panel2:#0e1315; --line:#1f2b2d;
+    --teal:#2dd9b0; --teal-dim:#1a5c4c; --red:#ff3f63; --amber:#ffcc55;
+    --text:#e8f0ee; --sub:#7c9490;
+  }
+  *{box-sizing:border-box;}
+  html,body{background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; margin:0; -webkit-tap-highlight-color:transparent;}
+  .mono{font-family:'SF Mono',ui-monospace,Menlo,Consolas,monospace; letter-spacing:.02em;}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:16px;}
+  .subtle{color:var(--sub);}
+  .accent{color:var(--teal);}
+  .eyebrow{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--teal); font-weight:600;}
+  input[type=range]{-webkit-appearance:none; width:100%; height:4px; border-radius:2px; background:var(--line); outline:none;}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:var(--teal); border:3px solid #06110e; box-shadow:0 0 0 1px var(--teal);}
+  input[type=range]::-moz-range-thumb{width:20px; height:20px; border-radius:50%; background:var(--teal); border:3px solid #06110e;}
+  .valbox{background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:6px 10px; font-size:14px; min-width:64px; text-align:center;}
+  .section-head{cursor:pointer; user-select:none; display:flex; align-items:center; justify-content:space-between; padding:16px 18px;}
+  .chev{transition:transform .2s ease; color:var(--sub);}
+  .collapsed .chev{transform:rotate(-90deg);}
+  .section-body{padding:0 18px 18px 18px;}
+  .collapsed .section-body{display:none;}
+  .toggle{width:44px; height:26px; border-radius:14px; background:var(--panel2); border:1px solid var(--line); position:relative; cursor:pointer; transition:background .15s;}
+  .toggle.on{background:var(--teal-dim);}
+  .toggle .dot{position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; background:#495c58; transition:transform .15s, background .15s;}
+  .toggle.on .dot{transform:translateX(18px); background:var(--teal);}
+  .seg{display:flex; border:1px solid var(--line); border-radius:10px; overflow:hidden;}
+  .seg button{flex:1; padding:8px 10px; background:transparent; border:none; color:var(--sub); font-size:14px; cursor:pointer;}
+  .seg button.active{background:var(--teal); color:#03110c; font-weight:600;}
+  .btn-primary{background:var(--teal); color:#03150f; font-weight:700; border:none; border-radius:12px; padding:10px 18px; display:flex; align-items:center; gap:8px; cursor:pointer;}
+  .btn-primary:active{transform:scale(.98);}
+  .btn-ghost{background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:12px; padding:10px 14px; cursor:pointer;}
+  .drop-zone{border:1.5px dashed #2a3a3a; border-radius:12px; padding:22px; text-align:center; color:var(--sub); cursor:pointer;}
+  .modal-backdrop{position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:flex-end; justify-content:center; z-index:50;}
+  .modal-backdrop.hidden{display:none !important;}
+  .modal-sheet{background:var(--panel); width:100%; max-width:640px; border-radius:20px 20px 0 0; border:1px solid var(--line); padding:20px; padding-bottom:32px;}
+  .export-opt{display:flex; align-items:center; gap:14px; border:1px solid var(--line); border-radius:14px; padding:14px; margin-top:10px; cursor:pointer; background:var(--panel2);}
+  .export-opt:active{transform:scale(.99);}
+  .icon-badge{width:38px;height:38px;border-radius:10px; background:var(--teal-dim); color:var(--teal); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  canvas{image-rendering:pixelated;}
+  ::-webkit-scrollbar{width:6px;height:6px;} ::-webkit-scrollbar-thumb{background:#233; border-radius:3px;}
+  .panel-preview-label{font-size:10px; letter-spacing:.1em; color:var(--sub); text-transform:uppercase;}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--teal-dim); color:var(--teal); padding:10px 18px; border-radius:10px; font-size:13px; z-index:80; opacity:0; transition:opacity .25s;}
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body class="pb-24">
+
+<!-- HEADER -->
+<div class="sticky top-0 z-30" style="background:rgba(10,14,16,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line);">
+  <div class="flex items-center justify-between px-4 py-4 max-w-3xl mx-auto">
+    <div>
+      <div class="text-xl font-bold" style="letter-spacing:-.01em;">Shadow Box</div>
+      <div class="eyebrow" style="font-size:10px;">Wall-Wash Generator</div>
+    </div>
+    <button id="btnExport" class="btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
+      Export
+    </button>
+  </div>
+</div>
+
+<div class="max-w-3xl mx-auto px-4 pt-4 space-y-4">
+
+  <!-- SILHOUETTE IMAGE -->
+  <div class="card" id="sec-image">
+    <div class="section-head" onclick="toggleSection('sec-image')">
+      <span class="eyebrow">Silhouette Image</span>
+      <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="section-body">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.svg" class="hidden">
+        <div class="flex items-center justify-center gap-2 subtle text-sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 20h16"/></svg>
+          <span id="fileLabel">Tap to upload silhouette</span>
+        </div>
+        <div class="text-xs mt-2 subtle">Accepted: PNG · JPEG · SVG</div>
+      </div>
+
+      <div class="mt-5 space-y-5">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Threshold</span><span class="valbox mono" id="v-threshold">128</span></div>
+          <input type="range" id="threshold" min="0" max="255" value="128">
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Invert image</span>
+          <div class="toggle" id="t-invert" onclick="toggleBool('invert')"><div class="dot"></div></div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Remove dots smaller than</span><span class="valbox mono"><span id="v-noise">0</span> px</span></div>
+          <input type="range" id="noise" min="0" max="60" value="0">
+        </div>
+        <div>
+          <div class="text-sm mb-2">Remove which dots</div>
+          <div class="seg" id="seg-dots">
+            <button data-v="white" class="active">White</button>
+            <button data-v="black">Black</button>
+            <button data-v="both">Both</button>
+          </div>
+        </div>
+        <div class="pt-1">
+          <div class="eyebrow" style="font-size:10px;">Edge Quality</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Raster Resolution</span><span class="valbox mono"><span id="v-res">640</span> px</span></div>
+          <input type="range" id="resolution" min="128" max="1024" step="32" value="640">
+          <div class="text-xs subtle mt-1">Higher = sharper silhouette, slower processing</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Curve Smoothing</span><span class="valbox mono"><span id="v-smooth">1.5</span> mm</span></div>
+          <input type="range" id="smoothing" min="0" max="6" step="0.1" value="1.5">
+          <div class="text-xs subtle mt-1">Higher = smoother curves, less pixel detail</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SOURCE THRESHOLD VIEWPORT -->
+  <div class="card">
+    <div class="flex items-center justify-between px-4 pt-4">
+      <span class="eyebrow">Source Threshold</span>
+    </div>
+    <div class="p-4 pt-2">
+      <div class="rounded-xl overflow-hidden flex items-center justify-center" style="background:#000; min-height:220px;">
+        <canvas id="srcCanvas" width="400" height="300" style="max-width:100%; height:auto;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- WALL PROJECTION VIEWPORT -->
+  <div class="card">
+    <div class="flex items-center justify-between px-4 pt-4">
+      <span class="eyebrow">Wall Projection</span>
+      <span class="text-xs subtle flex items-center gap-1"><span style="width:7px;height:7px;border-radius:50%;background:var(--amber); display:inline-block;"></span>LED</span>
+    </div>
+    <div class="p-4 pt-2">
+      <div class="rounded-xl overflow-hidden" style="background:#04100c;">
+        <canvas id="wallCanvas" width="500" height="500" style="width:100%; height:auto; display:block;"></canvas>
+      </div>
+      <div class="text-xs subtle mt-2 text-center">Simulated shadow on the wall, reconstructed from panel cutouts · red dashed = box footprint</div>
+    </div>
+  </div>
+
+  <!-- BOX SETTINGS -->
+  <div class="card">
+    <div class="section-head" onclick="null">
+      <span class="eyebrow">Box Settings</span>
+    </div>
+
+    <div class="border-t" style="border-color:var(--line);" id="sec-dims">
+      <div class="section-head" onclick="toggleSection('sec-dims')">
+        <span class="text-sm font-semibold">Box Dimensions</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Width</span><span class="valbox mono"><span id="v-boxW">200</span> mm</span></div>
+          <input type="range" id="boxW" min="60" max="500" value="200">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Height</span><span class="valbox mono"><span id="v-boxH">150</span> mm</span></div>
+          <input type="range" id="boxH" min="60" max="500" value="150">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Depth</span><span class="valbox mono"><span id="v-boxD">80</span> mm</span></div>
+          <input type="range" id="boxD" min="30" max="300" value="80">
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t collapsed" style="border-color:var(--line);" id="sec-led">
+      <div class="section-head" onclick="toggleSection('sec-led')">
+        <span class="text-sm font-semibold">LED Position</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Z — Distance from wall</span><span class="valbox mono"><span id="v-ledZ">40</span> mm</span></div>
+          <input type="range" id="ledZ" min="5" max="290" value="40">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>X Offset</span><span class="valbox mono"><span id="v-ledX">0</span> mm</span></div>
+          <input type="range" id="ledX" min="-100" max="100" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Y Offset</span><span class="valbox mono"><span id="v-ledY">0</span> mm</span></div>
+          <input type="range" id="ledY" min="-100" max="100" value="0">
+        </div>
+        <div class="text-xs subtle rounded-lg p-3" style="background:var(--panel2); border:1px solid var(--line);">
+          Auto height correction from double bottom plate: <span class="mono accent" id="v-ledCorrection">6.0</span> mm added to Y — keeps the projection undistorted.
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t collapsed" style="border-color:var(--line);" id="sec-boxpos">
+      <div class="section-head" onclick="toggleSection('sec-boxpos')">
+        <span class="text-sm font-semibold">Box Position</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Shadow Scale</span><span class="valbox mono"><span id="v-scale">4.0</span> x</span></div>
+          <input type="range" id="scale" min="1" max="12" step="0.1" value="4.0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>X Offset (left / right)</span><span class="valbox mono"><span id="v-offX">0</span> mm</span></div>
+          <input type="range" id="offX" min="-300" max="300" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Y Offset (up / down)</span><span class="valbox mono"><span id="v-offY">0</span> mm</span></div>
+          <input type="range" id="offY" min="-300" max="300" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Box Rotation</span><span class="valbox mono"><span id="v-boxRot">0</span> °</span></div>
+          <input type="range" id="boxRot" min="-45" max="45" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Shadow Rotation</span><span class="valbox mono"><span id="v-shadowRot">0</span> °</span></div>
+          <input type="range" id="shadowRot" min="-180" max="180" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t collapsed" style="border-color:var(--line);" id="sec-material">
+      <div class="section-head" onclick="toggleSection('sec-material')">
+        <span class="text-sm font-semibold">Material</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Thickness</span><span class="valbox mono"><span id="v-thick">3.0</span> mm</span></div>
+          <input type="range" id="thick" min="1.5" max="8" step="0.1" value="3.0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Tab Width</span><span class="valbox mono"><span id="v-tab">10</span> mm</span></div>
+          <input type="range" id="tab" min="6" max="30" value="10">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LASER CUT PANELS -->
+  <div>
+    <div class="eyebrow mb-2 px-1">Laser-Cut Panels</div>
+    <div class="grid grid-cols-2 gap-3" id="panelGrid"></div>
+  </div>
+
+  <div class="text-center text-xs subtle py-6">Single LED · perimeter-only projection · zero-gap nested export</div>
+</div>
+
+<div id="toast" class="toast">Processing…</div>
+
+<!-- EXPORT MODAL -->
+<div id="exportModal" class="modal-backdrop hidden">
+  <div class="modal-sheet">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-lg font-bold">Export Panels</div>
+      <button onclick="closeExport()" class="text-2xl leading-none subtle">&times;</button>
+    </div>
+    <div class="export-opt" onclick="downloadSVG()">
+      <div class="icon-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 15l2-6 2 6M9 12h2M14 9v6h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z"/></svg></div>
+      <div><div class="font-semibold">SVG</div><div class="text-xs subtle">Vector · CorelDraw, Inkscape</div></div>
+    </div>
+    <div class="export-opt" onclick="downloadPDF()">
+      <div class="icon-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg></div>
+      <div><div class="font-semibold">PDF</div><div class="text-xs subtle">Vector PDF · 1:1 scale · AutoCAD ready</div></div>
+    </div>
+    <div class="export-opt" onclick="downloadDXF()">
+      <div class="icon-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9l2 2-2 2M13 9l2 2-2 2"/></svg></div>
+      <div><div class="font-semibold">DXF</div><div class="text-xs subtle">AutoCAD native · 1:1 mm · OUTLINE + CUT layers</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   STATE
+   ============================================================ */
+const state = {
+  threshold:128, invert:false, noise:0, noiseMode:'white',
+  resolution:640, smoothing:1.5,
+  boxW:200, boxH:150, boxD:80,
+  ledZ:40, ledX:0, ledY:0,
+  scale:4.0, offX:0, offY:0, boxRot:0, shadowRot:0,
+  thick:3.0, tab:10,
+  mask:null, maskW:0, maskH:0,       // processed binary silhouette (1 = silhouette ink)
+  hasImage:false,
+  panels:null                        // computed panel data {top,bottom,left,right}
+};
+const DEG = Math.PI/180;
+
+function $(id){ return document.getElementById(id); }
+function toggleSection(id){ $(id).classList.toggle('collapsed'); }
+function toggleBool(key){
+  state[key] = !state[key];
+  $('t-invert').classList.toggle('on', state.invert);
+  scheduleRecompute();
+}
+
+/* ============================================================
+   UI WIRING
+   ============================================================ */
+const sliderMap = [
+  ['threshold','threshold',0], ['noise','noise',0], ['resolution','resolution',0],
+  ['smoothing','smoothing',1], ['boxW','boxW',0], ['boxH','boxH',0], ['boxD','boxD',0],
+  ['ledZ','ledZ',0], ['ledX','ledX',0], ['ledY','ledY',0],
+  ['scale','scale',1], ['offX','offX',0], ['offY','offY',0], ['boxRot','boxRot',0], ['shadowRot','shadowRot',0],
+  ['thick','thick',1], ['tab','tab',0]
+];
+const labelIdMap = { threshold:'v-threshold', noise:'v-noise', resolution:'v-res', smoothing:'v-smooth',
+  boxW:'v-boxW', boxH:'v-boxH', boxD:'v-boxD', ledZ:'v-ledZ', ledX:'v-ledX', ledY:'v-ledY',
+  scale:'v-scale', offX:'v-offX', offY:'v-offY', boxRot:'v-boxRot', shadowRot:'v-shadowRot',
+  thick:'v-thick', tab:'v-tab' };
+
+sliderMap.forEach(([elId,key,decimals])=>{
+  const el = $(elId);
+  el.addEventListener('input', ()=>{
+    const v = parseFloat(el.value);
+    state[key]=v;
+    $(labelIdMap[key]).textContent = decimals? v.toFixed(decimals) : Math.round(v);
+    if(key==='thick'){ $('v-ledCorrection').textContent = (state.thick*2).toFixed(1); }
+    scheduleRecompute(elId==='resolution' || elId==='threshold' || elId==='noise');
+  });
+});
+$('v-ledCorrection').textContent = (state.thick*2).toFixed(1);
+
+document.querySelectorAll('#seg-dots button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('#seg-dots button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active'); state.noiseMode = b.dataset.v; scheduleRecompute(true);
+  });
+});
+
+$('dropZone').addEventListener('click', ()=> $('fileInput').click());
+$('fileInput').addEventListener('change', (e)=>{
+  const f = e.target.files[0]; if(!f) return;
+  $('fileLabel').textContent = f.name;
+  loadImageFile(f);
+});
+
+let recomputeTimer=null;
+function scheduleRecompute(fast){
+  clearTimeout(recomputeTimer);
+  recomputeTimer = setTimeout(runPipeline, fast?60:180);
+}
+function showToast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); }
+function hideToast(){ $('toast').classList.remove('show'); }
+
+/* ============================================================
+   IMAGE LOADING
+   ============================================================ */
+let sourceImg = null;
+function loadImageFile(file){
+  showToast('Processing image…');
+
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+
+  img.onload = ()=>{
+    sourceImg = img;
+    state.hasImage = true;
+    // Yield to the browser first so the "Processing…" toast actually paints
+    // before we run the heavy synchronous threshold/ray-tracing pipeline.
+    setTimeout(()=>{
+      try{
+        runPipeline();
+        hideToast();
+      } catch(err){
+        console.error('Pipeline failed:', err);
+        showToast('Error: could not process this image');
+        setTimeout(hideToast, 2500);
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }, 50);
+  };
+
+  img.onerror = ()=>{
+    console.error('Image failed to load:', file && file.name);
+    showToast('Error: Invalid image file');
+    setTimeout(hideToast, 2500);
+    URL.revokeObjectURL(url);
+    // Don't touch state.hasImage / sourceImg — keep whatever was working before.
+  };
+
+  img.src = url;
+}
+
+/* build a default placeholder silhouette so the app has something to show before upload */
+function buildPlaceholderSilhouette(){
+  const c = document.createElement('canvas'); c.width=400; c.height=400;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,400,400);
+  ctx.fillStyle='#000';
+  ctx.beginPath();
+  ctx.arc(200,150,70,0,Math.PI*2); // head
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(140,210); ctx.quadraticCurveTo(120,320,150,380); ctx.lineTo(250,380);
+  ctx.quadraticCurveTo(280,320,260,210); ctx.closePath(); ctx.fill();
+  const img = new Image(); img.src = c.toDataURL();
+  return img;
+}
+
+/* ============================================================
+   PIPELINE: threshold -> noise removal -> mask
+   ============================================================ */
+function runPipeline(){
+  if(!state.hasImage && !sourceImg) sourceImg = buildPlaceholderSilhouette();
+  const res = Math.round(state.resolution);
+
+  // SVGs (and occasionally other files) can report naturalWidth/naturalHeight
+  // as 0 when no explicit width/height/viewBox is set. Fall back to a sane
+  // square default instead of letting NaN propagate through the mask sizing.
+  const rawW = sourceImg.naturalWidth || sourceImg.width || 0;
+  const rawH = sourceImg.naturalHeight || sourceImg.height || 0;
+  const iw = rawW > 0 ? rawW : 800;
+  const ih = rawH > 0 ? rawH : 800;
+
+  let mw,mh;
+  if(iw>=ih){ mw=res; mh=Math.max(1,Math.round(res*ih/iw)); } else { mh=res; mw=Math.max(1,Math.round(res*iw/ih)); }
+
+  const off = document.createElement('canvas'); off.width=mw; off.height=mh;
+  const octx = off.getContext('2d');
+  octx.fillStyle = '#ffffff'; octx.fillRect(0,0,mw,mh);
+  octx.drawImage(sourceImg,0,0,mw,mh);
+  const data = octx.getImageData(0,0,mw,mh).data;
+
+  const mask = new Uint8Array(mw*mh);
+  for(let i=0;i<mw*mh;i++){
+    const r=data[i*4],g=data[i*4+1],b=data[i*4+2],a=data[i*4+3];
+    const lum = 0.299*r+0.587*g+0.114*b;
+    let v = (a<10) ? 0 : (lum < state.threshold ? 1 : 0);
+    if(state.invert) v = 1-v;
+    mask[i]=v;
+  }
+  if(state.noise>0) removeSmallComponents(mask, mw, mh, state.noise, state.noiseMode);
+
+  state.mask=mask; state.maskW=mw; state.maskH=mh;
+  renderSourceCanvas();
+  computeProjectionAndRender();
+}
+
+function removeSmallComponents(mask,w,h,minSize,mode){
+  const visited = new Uint8Array(w*h);
+  const targets=[];
+  if(mode==='white'||mode==='both') targets.push(0);
+  if(mode==='black'||mode==='both') targets.push(1);
+  const stack = new Int32Array(w*h); 
+  for(const targetVal of targets){
+    for(let start=0; start<w*h; start++){
+      if(visited[start]||mask[start]!==targetVal) continue;
+      let sp=0; stack[sp++]=start; visited[start]=1;
+      const comp=[];
+      while(sp>0){
+        const idx=stack[--sp]; comp.push(idx);
+        const x=idx%w, y=(idx/w)|0;
+        if(x>0){ const n=idx-1; if(!visited[n]&&mask[n]===targetVal){visited[n]=1; stack[sp++]=n;} }
+        if(x<w-1){ const n=idx+1; if(!visited[n]&&mask[n]===targetVal){visited[n]=1; stack[sp++]=n;} }
+        if(y>0){ const n=idx-w; if(!visited[n]&&mask[n]===targetVal){visited[n]=1; stack[sp++]=n;} }
+        if(y<h-1){ const n=idx+w; if(!visited[n]&&mask[n]===targetVal){visited[n]=1; stack[sp++]=n;} }
+      }
+      if(comp.length < minSize){
+        const flip = targetVal===0?1:0;
+        for(const idx of comp) mask[idx]=flip;
+      }
+    }
+  }
+}
+
+function renderSourceCanvas(){
+  const cv = $('srcCanvas'); const mw=state.maskW, mh=state.maskH;
+  cv.width=mw; cv.height=mh;
+  const ctx = cv.getContext('2d');
+  const imgData = ctx.createImageData(mw,mh);
+  for(let i=0;i<mw*mh;i++){
+    const v = state.mask[i]; const c = v? 12:236;
+    imgData.data[i*4]=c; imgData.data[i*4+1]=v?18:242; imgData.data[i*4+2]=v?16:238; imgData.data[i*4+3]=255;
+  }
+  ctx.putImageData(imgData,0,0);
+  cv.style.width = '100%'; cv.style.maxWidth='420px';
+}
+
+/* ============================================================
+   GEOMETRY ENGINE
+   ============================================================ */
+function raycastPanel(Lx,Ly,Lz, Qx,Qy,Qz, boxW,boxH,boxD){
+  const dx=Qx-Lx, dy=Qy-Ly, dz=Qz-Lz;
+  const cands=[];
+  if(Math.abs(dx)>1e-9){
+    cands.push({t:(boxW/2-Lx)/dx, type:'right'});
+    cands.push({t:(-boxW/2-Lx)/dx, type:'left'});
+  }
+  if(Math.abs(dy)>1e-9){
+    cands.push({t:(boxH/2-Ly)/dy, type:'top'});
+    cands.push({t:(-boxH/2-Ly)/dy, type:'bottom'});
+  }
+  cands.sort((a,b)=>a.t-b.t);
+  for(const c of cands){
+    if(c.t<=1e-6 || c.t>1.000001) continue;
+    const px=Lx+dx*c.t, py=Ly+dy*c.t, pz=Lz+dz*c.t;
+    if(pz<0||pz>boxD) continue;
+    if(c.type==='right'||c.type==='left'){
+      if(py< -boxH/2-1e-6 || py>boxH/2+1e-6) continue;
+      return {panel:c.type, u:py+boxH/2, v:pz};
+    } else {
+      if(px< -boxW/2-1e-6 || px>boxW/2+1e-6) continue;
+      return {panel:c.type, u:px+boxW/2, v:pz};
+    }
+  }
+  return null;
+}
+
+const PX_PER_MM = 4; // panel raster density
+
+function computeProjection(){
+  const boxW=state.boxW, boxH=state.boxH, boxD=state.boxD;
+  const ledCorrection = state.thick*2;
+  const Lx = state.ledX, Ly = state.ledY+ledCorrection, Lz = Math.min(Math.max(state.ledZ,1), boxD-1);
+
+  const mw=state.maskW, mh=state.maskH, mask=state.mask;
+  const wallImgW = boxW*state.scale;
+  const wallImgH = wallImgW*(mh/mw);
+  const cosA=Math.cos(-state.boxRot*DEG), sinA=Math.sin(-state.boxRot*DEG);
+  const cosS=Math.cos(state.shadowRot*DEG), sinS=Math.sin(state.shadowRot*DEG);
+
+  const panelsRaw = {
+    top:{w:Math.max(4,Math.round(boxW*PX_PER_MM)), h:Math.max(4,Math.round(boxD*PX_PER_MM)), total:null, lit:null, dimW:boxW},
+    bottom:{w:Math.max(4,Math.round(boxW*PX_PER_MM)), h:Math.max(4,Math.round(boxD*PX_PER_MM)), total:null, lit:null, dimW:boxW},
+    left:{w:Math.max(4,Math.round(boxH*PX_PER_MM)), h:Math.max(4,Math.round(boxD*PX_PER_MM)), total:null, lit:null, dimW:boxH},
+    right:{w:Math.max(4,Math.round(boxH*PX_PER_MM)), h:Math.max(4,Math.round(boxD*PX_PER_MM)), total:null, lit:null, dimW:boxH}
+  };
+  for(const k in panelsRaw){ panelsRaw[k].total=new Uint32Array(panelsRaw[k].w*panelsRaw[k].h); panelsRaw[k].lit=new Uint32Array(panelsRaw[k].w*panelsRaw[k].h); }
+
+  for(let sy=0; sy<mh; sy++){
+    for(let sx=0; sx<mw; sx++){
+      const m = mask[sy*mw+sx];
+      const nx=(sx+0.5)/mw-0.5, ny=(sy+0.5)/mh-0.5;
+      const lx0=nx*wallImgW, ly0=-ny*wallImgH;
+      const lx = lx0*cosS - ly0*sinS;
+      const ly = lx0*sinS + ly0*cosS;
+      const qx = lx*cosA - ly*sinA;
+      const qy = lx*sinA + ly*cosA;
+      const hit = raycastPanel(Lx,Ly,Lz, qx,qy,0, boxW,boxH,boxD);
+      if(!hit) continue;
+      const p = panelsRaw[hit.panel];
+      let px = Math.floor((hit.u/p.dimW)*p.w);
+      let py = Math.floor((hit.v/boxD)*p.h);
+      if(px<0)px=0; if(px>=p.w)px=p.w-1; if(py<0)py=0; if(py>=p.h)py=p.h-1;
+      const idx=py*p.w+px;
+      p.total[idx]++;
+      if(m===0) p.lit[idx]++;
+    }
+  }
+
+  const result={};
+  for(const k in panelsRaw){
+    const p=panelsRaw[k];
+    const finalMask=new Uint8Array(p.w*p.h);
+    for(let i=0;i<finalMask.length;i++) finalMask[i] = (p.total[i]>0 && (p.lit[i]/p.total[i])>=0.5) ? 1:0;
+    removeSmallComponents(finalMask, p.w, p.h, Math.max(2,Math.round(PX_PER_MM*PX_PER_MM*0.6)), 'both');
+    result[k]={mask:finalMask, w:p.w, h:p.h, dimW:p.dimW, dimH:boxD};
+  }
+  return {panels:result, led:{x:Lx,y:Ly,z:Lz}, wallImgW, wallImgH};
+}
+
+/* ---------- marching squares ---------- */
+const MS_TABLE = {
+  1:[['L','B']], 2:[['B','R']], 3:[['L','R']], 4:[['T','R']],
+  5:[['T','R'],['L','B']], 6:[['T','B']], 7:[['T','L']], 8:[['T','L']],
+  9:[['T','B']], 10:[['T','L'],['R','B']], 11:[['T','R']], 12:[['L','R']],
+  13:[['R','B']], 14:[['B','L']]
+};
+function edgePoint(name,gx,gy){
+  if(name==='T') return [gx+0.5,gy];
+  if(name==='R') return [gx+1,gy+0.5];
+  if(name==='B') return [gx+0.5,gy+1];
+  return [gx,gy+0.5];
+}
+function marchingSquares(mask,w,h){
+  const S=(x,y)=> (x<0||y<0||x>=w||y>=h) ? 0 : mask[y*w+x];
+  const segs=[];
+  for(let gy=-1; gy<h; gy++){
+    for(let gx=-1; gx<w; gx++){
+      const tl=S(gx,gy), tr=S(gx+1,gy), br=S(gx+1,gy+1), bl=S(gx,gy+1);
+      const c = tl*8+tr*4+br*2+bl*1;
+      if(c===0||c===15) continue;
+      const pairs = MS_TABLE[c]; if(!pairs) continue;
+      for(const [a,b] of pairs) segs.push([edgePoint(a,gx,gy), edgePoint(b,gx,gy)]);
+    }
+  }
+  // chain into polylines
+  const key = p=>p[0].toFixed(2)+','+p[1].toFixed(2);
+  const adj = new Map();
+  segs.forEach((s,i)=>{
+    const k1=key(s[0]), k2=key(s[1]);
+    if(!adj.has(k1)) adj.set(k1,[]); if(!adj.has(k2)) adj.set(k2,[]);
+    adj.get(k1).push({other:k2, pt:s[1], used:false, segIdx:i});
+    adj.get(k2).push({other:k1, pt:s[0], used:false, segIdx:i});
+  });
+  const usedSeg = new Uint8Array(segs.length);
+  const polylines=[];
+  for(let i=0;i<segs.length;i++){
+    if(usedSeg[i]) continue;
+    usedSeg[i]=1;
+    let poly=[segs[i][0], segs[i][1]];
+    let curKey = key(segs[i][1]);
+    let guard=0;
+    while(guard++<100000){
+      const options = (adj.get(curKey)||[]).filter(o=>!usedSeg[o.segIdx]);
+      if(options.length===0) break;
+      const opt = options[0];
+      usedSeg[opt.segIdx]=1;
+      poly.push(opt.pt);
+      curKey = key(opt.pt);
+      if(curKey === key(poly[0])) break;
+    }
+    if(poly.length>=3) polylines.push(poly);
+  }
+  return polylines;
+}
+function douglasPeucker(pts, eps){
+  if(pts.length<3 || eps<=0) return pts;
+  function rec(points){
+    if(points.length<3) return points;
+    const [x1,y1]=points[0], [x2,y2]=points[points.length-1];
+    let maxD=-1, idx=-1;
+    const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy)||1e-9;
+    for(let i=1;i<points.length-1;i++){
+      const [x0,y0]=points[i];
+      const d = Math.abs(dy*x0 - dx*y0 + x2*y1 - y2*x1)/len;
+      if(d>maxD){ maxD=d; idx=i; }
+    }
+    if(maxD>eps){
+      const left=rec(points.slice(0,idx+1));
+      const right=rec(points.slice(idx));
+      return left.slice(0,-1).concat(right);
+    }
+    return [points[0], points[points.length-1]];
+  }
+  return rec(pts);
+}
+function smoothPathD(pts, closed, offsetX, offsetY, scaleToMM){
+  if(pts.length<3) return '';
+  const P = pts.map(p=>[ (p[0]*scaleToMM)+offsetX, (p[1]*scaleToMM)+offsetY ]);
+  let d = `M ${((P[0][0]+P[1][0])/2).toFixed(2)} ${((P[0][1]+P[1][1])/2).toFixed(2)} `;
+  for(let i=1;i<P.length-1;i++){
+    const mx=(P[i][0]+P[i+1][0])/2, my=(P[i][1]+P[i+1][1])/2;
+    d += `Q ${P[i][0].toFixed(2)} ${P[i][1].toFixed(2)} ${mx.toFixed(2)} ${my.toFixed(2)} `;
+  }
+  if(closed) d += 'Z';
+  return d;
+}
+function panelCutoutPaths(panelMask, w, h, dimW, dimD){
+  const polys = marchingSquares(panelMask, w, h);
+  const pxPerMM = w/dimW;
+  const eps = state.smoothing * pxPerMM * 0.5;
+  return polys.map(poly=>{
+    const simplified = douglasPeucker(poly, eps);
+    return smoothPathD(simplified, true, 0, 0, 1/pxPerMM);
+  }).filter(d=>d.length>0);
+}
+
+/* ---------- finger joints ---------- */
+function zigzag(axis, fixed, start, end, thickness, tabWidth, outward){
+  // axis 'v' => vertical edge (x fixed, y runs start..end); axis 'h' => horizontal edge (y fixed, x runs start..end)
+  const total = end-start;
+  const n = Math.max(1, Math.round(total/tabWidth));
+  const step = total/n;
+  const pts=[];
+  let out=false;
+  const pushPt=(a,b)=>{ pts.push(axis==='v'?[a,b]:[b,a]); };
+  pushPt(fixed, start);
+  for(let i=0;i<n;i++){
+    const s0=start+i*step, s1=start+(i+1)*step;
+    const f = out ? fixed+outward*thickness : fixed;
+    pushPt(f, s0); pushPt(f, s1);
+    out=!out;
+  }
+  pushPt(fixed, end);
+  return pts;
+}
+
+function buildPanelOutline(localW, localD, thickness, tabWidth){
+  // returns closed point list [x,y] in mm, origin top-left = wall/back-left corner
+  // top edge (wall side, y=0): finger joints bumping upward (outward=-1)
+  const top = zigzag('h', 0, 0, localW, thickness, tabWidth, -1);
+  // right edge (x=localW): finger joints bumping outward (+1) -- shared seam
+  const right = zigzag('v', localW, 0, localD, thickness, tabWidth, 1);
+  // bottom edge (front/opening, y=localD): plain straight line
+  const bottom = [[localW,localD],[0,localD]];
+  // left edge (x=0): finger joints bumping outward (-1) -- shared seam
+  const left = zigzag('v', 0, localD, 0, thickness, tabWidth, -1);
+  return top.concat(right.slice(1)).concat(bottom.slice(1)).concat(left.slice(1));
+}
+
+function pathDFromPoints(pts, close){
+  let d = `M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)} `;
+  for(let i=1;i<pts.length;i++) d+= `L ${pts[i][0].toFixed(2)} ${pts[i][1].toFixed(2)} `;
+  if(close) d+='Z';
+  return d;
+}
+
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function computeProjectionAndRender(){
+  const proj = computeProjection();
+  state.panels = proj;
+  renderWallCanvas(proj);
+  renderPanels(proj);
+}
+
+function renderWallCanvas(proj){
+  const cv = $('wallCanvas');
+  const dispRes = 260; // sampling grid for the preview (perf)
+  cv.width=dispRes; cv.height=dispRes;
+  const ctx = cv.getContext('2d');
+  const boxW=state.boxW, boxH=state.boxH, boxD=state.boxD;
+  const margin = 1.4; // show a bit beyond the image bounds
+  const viewW = proj.wallImgW*margin, viewH = proj.wallImgH*margin;
+  const imgData = ctx.createImageData(dispRes,dispRes);
+
+  const cosA=Math.cos(-state.boxRot*DEG), sinA=Math.sin(-state.boxRot*DEG);
+  const cosS=Math.cos(-state.shadowRot*DEG), sinS=Math.sin(-state.shadowRot*DEG);
+  const Lx=proj.led.x, Ly=proj.led.y, Lz=proj.led.z;
+
+  for(let py=0; py<dispRes; py++){
+    for(let px=0; px<dispRes; px++){
+      const wx = (px/dispRes-0.5)*viewW;
+      const wy = -(py/dispRes-0.5)*viewH;
+      // undo box rotation to get into box-local, then undo shadow rotation to sample source mask
+      const qx = wx*cosA - wy*sinA*-1; // placeholder, recompute properly below
+      // proper transforms:
+      const bx = wx*Math.cos(state.boxRot*DEG*-1) - wy*Math.sin(state.boxRot*DEG*-1);
+      const by = wx*Math.sin(state.boxRot*DEG*-1) + wy*Math.cos(state.boxRot*DEG*-1);
+      const hit = raycastPanel(Lx,Ly,Lz, bx,by,0, boxW,boxH,boxD);
+      let lit=0;
+      if(hit){
+        const p = proj.panels[hit.panel];
+        let ppx = Math.floor((hit.u/p.dimW)*p.w), ppy=Math.floor((hit.v/boxD)*p.h);
+        if(ppx>=0&&ppx<p.w&&ppy>=0&&ppy<p.h) lit = p.mask[ppy*p.w+ppx];
+      }
+      const idx=(py*dispRes+px)*4;
+      if(lit){ imgData.data[idx]=8; imgData.data[idx+1]=10; imgData.data[idx+2]=9; imgData.data[idx+3]=255; }
+      else { imgData.data[idx]=26; imgData.data[idx+1]=95; imgData.data[idx+2]=80; imgData.data[idx+3]=255; }
+    }
+  }
+  ctx.putImageData(imgData,0,0);
+
+  // overlay: box footprint (dashed) + LED dot, scale to canvas coords
+  const toCanvas = (x,y)=> [ dispRes*(0.5+x/viewW), dispRes*(0.5-y/viewH) ];
+  ctx.strokeStyle='#ff5a4d'; ctx.setLineDash([4,4]); ctx.lineWidth=1;
+  const c1=toCanvas(-boxW/2,-boxH/2), c2=toCanvas(boxW/2,boxH/2);
+  ctx.strokeRect(c1[0],c1[1], c2[0]-c1[0], c2[1]-c1[1]);
+  ctx.setLineDash([]);
+  const ledC = toCanvas(state.ledX, state.ledY);
+  ctx.fillStyle='#ffcc55';
+  ctx.beginPath(); ctx.arc(ledC[0], ledC[1], 3, 0, Math.PI*2); ctx.fill();
+
+  cv.style.width='100%'; cv.style.aspectRatio='1/1';
+}
+
+function renderPanels(proj){
+  const order = [
+    {key:'top', label:'Top', dimW:state.boxW},
+    {key:'right', label:'Right', dimW:state.boxH},
+    {key:'bottom', label:'Bottom', dimW:state.boxW},
+    {key:'left', label:'Left', dimW:state.boxH}
+  ];
+  const grid = $('panelGrid');
+  grid.innerHTML='';
+  order.forEach(o=>{
+    const p = proj.panels[o.key];
+    const localW = o.dimW, localD = state.boxD;
+    const outline = buildPanelOutline(localW, localD, state.thick, state.tab);
+    const cutouts = panelCutoutPaths(p.mask, p.w, p.h, localW, localD);
+    const pad = state.thick+4;
+    const vbW = localW+pad*2, vbH = localD+pad*2;
+    const outlineD = pathDFromPoints(outline.map(pt=>[pt[0]+pad, pt[1]+pad]), true);
+    const cutD = cutouts.map(d=>{
+      // shift path (already relative 0..localW,0..localD) by pad
+      return d.replace(/(-?\d+\.?\d*) (-?\d+\.?\d*)/g, (m,a,b)=>`${(parseFloat(a)+pad).toFixed(2)} ${(parseFloat(b)+pad).toFixed(2)}`);
+    }).join(' ');
+
+    const card = document.createElement('div');
+    card.className='card overflow-hidden';
+    card.innerHTML = `
+      <div class="px-3 pt-3 flex justify-between items-center">
+        <span class="text-xs font-semibold">${o.label.toUpperCase()}</span>
+        <span class="panel-preview-label">${Math.round(localW)}×${Math.round(localD)}MM</span>
+      </div>
+      <div class="p-2">
+        <svg viewBox="0 0 ${vbW} ${vbH}" style="width:100%; background:#0c1315; border-radius:8px;">
+          <text x="${vbW/2}" y="${pad-4}" font-size="4" fill="#5c716d" text-anchor="middle">WALL SIDE ▲</text>
+          <path d="${outlineD}" fill="none" stroke="#3a4a48" stroke-width="0.8"/>
+          <path d="${cutD}" fill="none" stroke="#ff3f63" stroke-width="0.9"/>
+          <text x="${vbW/2}" y="${vbH-3}" font-size="4" fill="#5c716d" text-anchor="middle">FRONT / OPENING ▼</text>
+        </svg>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+/* ============================================================
+   EXPORT
+   ============================================================ */
+function buildNestedLayout(){
+  const proj = state.panels;
+  const boxW=state.boxW, boxH=state.boxH, boxD=state.boxD, thick=state.thick, tab=state.tab;
+  const seq = [
+    {key:'top', dimW:boxW, mirror:true},
+    {key:'right', dimW:boxH, mirror:false},
+    {key:'bottom', dimW:boxW, mirror:true},
+    {key:'left', dimW:boxH, mirror:false}
+  ];
+  let xCursor=0;
+  const placed=[];
+  for(const s of seq){
+    const p = proj.panels[s.key];
+    const outline = buildPanelOutline(s.dimW, boxD, thick, tab);
+    let cutPolys = marchingSquares(p.mask, p.w, p.h);
+    const pxPerMM = p.w/s.dimW;
+    const eps = state.smoothing*pxPerMM*0.5;
+    cutPolys = cutPolys.map(poly=>douglasPeucker(poly,eps).map(pt=>[pt[0]/pxPerMM, pt[1]/pxPerMM]));
+
+    const mirror = s.mirror;
+    const tOutline = outline.map(([x,y])=> mirror? [s.dimW-x + xCursor, y] : [x+xCursor, y]);
+    const tCutouts = cutPolys.map(poly=> poly.map(([x,y])=> mirror? [s.dimW-x+xCursor, y] : [x+xCursor, y]));
+    placed.push({key:s.key, outline:tOutline, cutouts:tCutouts, x0:xCursor, x1:xCursor+s.dimW});
+    xCursor += s.dimW;
+  }
+  return {placed, totalW:xCursor, totalH:boxD};
+}
+
+function openExport(){ $('exportModal').classList.remove('hidden'); }
+function closeExport(){ $('exportModal').classList.add('hidden'); }
+$('btnExport').addEventListener('click', openExport);
+$('exportModal').addEventListener('click', (e)=>{ if(e.target.id==='exportModal') closeExport(); });
+
+function download(filename, content, type){
+  const blob = new Blob([content], {type});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+function smoothDFromMMPoints(poly){
+  if(poly.length<3) return '';
+  let d = `M ${((poly[0][0]+poly[1][0])/2).toFixed(2)} ${((poly[0][1]+poly[1][1])/2).toFixed(2)} `;
+  for(let i=1;i<poly.length-1;i++){
+    const mx=(poly[i][0]+poly[i+1][0])/2, my=(poly[i][1]+poly[i+1][1])/2;
+    d += `Q ${poly[i][0].toFixed(2)} ${poly[i][1].toFixed(2)} ${mx.toFixed(2)} ${my.toFixed(2)} `;
+  }
+  return d+'Z';
+}
+
+function downloadSVG(){
+  const {placed, totalW, totalH} = buildNestedLayout();
+  let body='';
+  for(const p of placed){
+    body += `<path d="${pathDFromPoints(p.outline,true)}" fill="none" stroke="#000000" stroke-width="0.2"/>\n`;
+    for(const c of p.cutouts) body += `<path d="${smoothDFromMMPoints(c)}" fill="none" stroke="#ff0000" stroke-width="0.15"/>\n`;
+  }
+  const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}mm" height="${totalH}mm" viewBox="0 0 ${totalW} ${totalH}">
+<g id="outline-black">${body}</g>
+</svg>`;
+  download('shadowbox-panels.svg', svg, 'image/svg+xml');
+  closeExport();
+}
+
+function downloadDXF(){
+  const {placed} = buildNestedLayout();
+  let ents='';
+  function poly(pts, layer, closed){
+    ents += `0\nLWPOLYLINE\n8\n${layer}\n90\n${pts.length}\n70\n${closed?1:0}\n`;
+    for(const [x,y] of pts) ents += `10\n${x.toFixed(3)}\n20\n${(-y).toFixed(3)}\n`;
+  }
+  for(const p of placed){
+    poly(p.outline, 'OUTLINE', true);
+    for(const c of p.cutouts) poly(c, 'CUT', true);
+  }
+  const dxf = `0\nSECTION\n2\nHEADER\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n${ents}0\nENDSEC\n0\nEOF\n`;
+  download('shadowbox-panels.dxf', dxf, 'application/dxf');
+  closeExport();
+}
+
+/* minimal vector PDF writer */
+function downloadPDF(){
+  const {placed, totalW, totalH} = buildNestedLayout();
+  const MM=2.834645669;
+  let content = '';
+  function drawPoly(pts, rgb, closed){
+    content += `${rgb[0]} ${rgb[1]} ${rgb[2]} RG\n0.4 w\n`;
+    pts.forEach(([x,y],i)=>{
+      const px=(x*MM).toFixed(2), py=((totalH-y)*MM).toFixed(2);
+      content += `${px} ${py} ${i===0?'m':'l'}\n`;
+    });
+    content += `${closed?'s':'S'}\n`;
+  }
+  for(const p of placed){
+    drawPoly(p.outline, [0,0,0], true);
+    for(const c of p.cutouts) drawPoly(c, [1,0,0.1], true);
+  }
+  const w=(totalW*MM).toFixed(2), h=(totalH*MM).toFixed(2);
+  const objs = [];
+  objs.push('<< /Type /Catalog /Pages 2 0 R >>');
+  objs.push('<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  objs.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${w} ${h}] /Contents 4 0 R /Resources << >> >>`);
+  objs.push(null); // placeholder for stream (built after)
+  const stream = `stream\n${content}endstream`;
+  objs[3] = `<< /Length ${content.length} >>\n${stream}`;
+
+  let pdf = '%PDF-1.4\n';
+  const offsets=[0];
+  objs.forEach((o,i)=>{
+    offsets.push(pdf.length);
+    pdf += `${i+1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xrefStart = pdf.length;
+  pdf += `xref\n0 ${objs.length+1}\n0000000000 65535 f \n`;
+  for(let i=1;i<=objs.length;i++) pdf += String(offsets[i]).padStart(10,'0')+' 00000 n \n';
+  pdf += `trailer\n<< /Size ${objs.length+1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+
+  download('shadowbox-panels.pdf', pdf, 'application/pdf');
+  closeExport();
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+runPipeline();
+</script>
+</body>
+</html>

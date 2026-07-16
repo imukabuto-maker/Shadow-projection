@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shadow Box — Anamorphic Wall-Wash Generator</title>
+<meta name="description" content="Design and export laser-cut anamorphic shadow projection boxes: upload a silhouette, tune a single-LED wall projection, and download SVG/DXF/PDF cut files.">
+<meta name="theme-color" content="#0a0e10">
+<meta property="og:title" content="Shadow Box — Anamorphic Wall-Wash Generator">
+<meta property="og:description" content="Turn any silhouette into a laser-cut, single-LED shadow projection box. Live preview + SVG/DXF/PDF export.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230a0e10'/%3E%3Ccircle cx='50' cy='48' r='9' fill='%23ffcc55'/%3E%3Cpath d='M20 78 Q35 40 50 78 Q65 40 80 78Z' fill='%232dd9b0'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body class="pb-24">
+
+<!-- HEADER -->
+<div class="sticky top-0 z-30" style="background:rgba(10,14,16,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--line);">
+  <div class="flex items-center justify-between px-4 py-4 max-w-3xl mx-auto">
+    <div>
+      <div class="text-xl font-bold" style="letter-spacing:-.01em;">Shadow Box</div>
+      <div class="eyebrow" style="font-size:10px;">Wall-Wash Generator</div>
+    </div>
+    <button id="btnExport" class="btn-primary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
+      Export
+    </button>
+  </div>
+</div>
+
+<div class="max-w-3xl mx-auto px-4 pt-4 space-y-4">
+
+  <!-- SILHOUETTE IMAGE -->
+  <div class="card" id="sec-image">
+    <div class="section-head" onclick="toggleSection('sec-image')">
+      <span class="eyebrow">Silhouette Image</span>
+      <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+    <div class="section-body">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.svg" class="hidden">
+        <div class="flex items-center justify-center gap-2 subtle text-sm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4m0 0L7 9m5-5l5 5"/><path d="M4 20h16"/></svg>
+          <span id="fileLabel">Tap to upload silhouette</span>
+        </div>
+        <div class="text-xs mt-2 subtle">Accepted: PNG · JPEG · SVG</div>
+      </div>
+
+      <div class="mt-5 space-y-5">
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Apply Threshold</span>
+          <div class="toggle on" id="t-thresholdEnabled" onclick="toggleThresholdEnabled()"><div class="dot"></div></div>
+        </div>
+        <div class="text-xs subtle -mt-3" id="thresholdEnabledHint">On — the slider below adjusts the black/white cutoff. Turn off if your image is already a clean silhouette (e.g. pre-edited elsewhere) and you don't want it re-thresholded.</div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Threshold</span><span class="valbox mono"><span id="v-threshold">128</span></span></div>
+          <input type="range" id="threshold" min="0" max="255" value="128">
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Invert image</span>
+          <div class="toggle" id="t-invert" onclick="toggleBool('invert')"><div class="dot"></div></div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Remove dots smaller than</span><span class="valbox mono"><span id="v-noise">0</span> px</span></div>
+          <input type="range" id="noise" min="0" max="60" value="0">
+        </div>
+        <div>
+          <div class="text-sm mb-2">Remove which dots</div>
+          <div class="seg" id="seg-dots">
+            <button data-v="white" class="active">White</button>
+            <button data-v="black">Black</button>
+            <button data-v="both">Both</button>
+          </div>
+        </div>
+        <div class="pt-1">
+          <div class="eyebrow" style="font-size:10px;">Edge Quality</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Raster Resolution</span><span class="valbox mono"><span id="v-res">640</span> px</span></div>
+          <input type="range" id="resolution" min="128" max="1024" step="32" value="640">
+          <div class="text-xs subtle mt-1">Higher = sharper silhouette, slower processing</div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Curve Smoothing</span><span class="valbox mono"><span id="v-smooth">1.5</span> mm</span></div>
+          <input type="range" id="smoothing" min="0" max="6" step="0.1" value="1.5">
+          <div class="text-xs subtle mt-1">Higher = smoother curves, less pixel detail</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SOURCE THRESHOLD VIEWPORT -->
+  <div class="card">
+    <div class="flex items-center justify-between px-4 pt-4">
+      <span class="eyebrow">Source Threshold</span>
+    </div>
+    <div class="p-4 pt-2">
+      <div class="rounded-xl overflow-hidden flex items-center justify-center" style="background:#000; min-height:220px;">
+        <canvas id="srcCanvas" width="400" height="300" style="max-width:100%; height:auto;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D BOX PREVIEW -->
+  <div class="card">
+    <div class="flex items-center justify-between px-4 pt-4">
+      <span class="eyebrow">3D Preview</span>
+      <button id="btnResetView" class="text-xs subtle flex items-center gap-1" style="background:none; border:none;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
+        Reset view
+      </button>
+    </div>
+    <div class="p-4 pt-2">
+      <div class="rounded-xl overflow-hidden" style="background:#04100c; aspect-ratio:1/1; position:relative; touch-action:none;">
+        <canvas id="scene3d" style="width:100%; height:100%; display:block;"></canvas>
+      </div>
+      <div class="text-xs subtle mt-2 text-center">Drag to rotate · pinch or scroll to zoom · built from the actual cutout data</div>
+    </div>
+  </div>
+
+  <!-- BOX SETTINGS -->
+  <div class="card">
+    <div class="section-head" onclick="null">
+      <span class="eyebrow">Box Settings</span>
+    </div>
+
+    <div class="border-t" style="border-color:var(--line);" id="sec-dims">
+      <div class="section-head" onclick="toggleSection('sec-dims')">
+        <span class="text-sm font-semibold">Box Dimensions</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Width</span><span class="valbox mono"><span id="v-boxW">200</span> mm</span></div>
+          <input type="range" id="boxW" min="60" max="500" value="200">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Height</span><span class="valbox mono"><span id="v-boxH">150</span> mm</span></div>
+          <input type="range" id="boxH" min="60" max="500" value="150">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Depth</span><span class="valbox mono"><span id="v-boxD">80</span> mm</span></div>
+          <input type="range" id="boxD" min="15" max="300" value="80">
+          <div class="flex items-center justify-between mt-2">
+            <span class="text-xs subtle">Auto (= LED Z + margin)</span>
+            <div class="toggle" id="t-autoDepth" onclick="toggleAutoDepth()"><div class="dot"></div></div>
+          </div>
+          <div class="text-xs subtle mt-1" id="autoDepthHint">Off — Depth is set manually.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t" style="border-color:var(--line);" id="sec-mounting">
+      <div class="section-head" onclick="toggleSection('sec-mounting')">
+        <span class="text-sm font-semibold">Mounting Method</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Existing Box (no interlock)</span>
+          <div class="toggle" id="t-boxMode" onclick="toggleBoxMode()"><div class="dot"></div></div>
+        </div>
+        <div class="text-xs subtle -mt-2" id="boxModeHint">Off — designs a laser-cut acrylic box from scratch, with finger-joint interlocks and a Back Plate. Turn on if you already have a plastic box/tube and just want a wrap-around paper pattern to drill or cut by hand.</div>
+      </div>
+    </div>
+
+    <div class="border-t" style="border-color:var(--line);" id="sec-control">
+      <div class="section-head" onclick="toggleSection('sec-control')">
+        <span class="text-sm font-semibold">Control Box (Electronics)</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Device Clearance (from wall)</span><span class="valbox mono"><span id="v-deviceH">0</span> mm</span></div>
+          <input type="range" id="deviceH" min="0" max="150" value="0">
+          <div class="text-xs subtle mt-1">Height of your LED controller/driver box, measured from the wall side. Every panel stays fully solid for this entire depth — the red cutout line only starts after this gap.</div>
+        </div>
+        <div id="clearanceWarning" class="text-xs rounded-lg p-3 hidden" style="background:#3a1a1a; border:1px solid #7a2f2f; color:#ff9a9a;"></div>
+      </div>
+    </div>
+
+    <div class="border-t collapsed" style="border-color:var(--line);" id="sec-led">
+      <div class="section-head" onclick="toggleSection('sec-led')">
+        <span class="text-sm font-semibold">LED Position</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Z — Distance from wall</span><span class="valbox mono"><span id="v-ledZ">40</span> mm</span></div>
+          <input type="range" id="ledZ" min="5" max="290" value="40">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>X Offset</span><span class="valbox mono"><span id="v-ledX">0</span> mm</span></div>
+          <input type="range" id="ledX" min="-100" max="100" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Y Offset</span><span class="valbox mono"><span id="v-ledY">0</span> mm</span></div>
+          <input type="range" id="ledY" min="-100" max="100" value="0">
+        </div>
+        <div class="text-xs subtle rounded-lg p-3" style="background:var(--panel2); border:1px solid var(--line);">
+          Auto height correction from double bottom plate: <span class="mono accent" id="v-ledCorrection">6.0</span> mm added to Y — keeps the projection undistorted.
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t collapsed" style="border-color:var(--line);" id="sec-boxpos">
+      <div class="section-head" onclick="toggleSection('sec-boxpos')">
+        <span class="text-sm font-semibold">Box Position</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Shadow Scale</span><span class="valbox mono"><span id="v-scale">4.0</span> x</span></div>
+          <input type="range" id="scale" min="1" max="12" step="0.1" value="4.0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>X Offset (left / right)</span><span class="valbox mono"><span id="v-offX">0</span> mm</span></div>
+          <input type="range" id="offX" min="-300" max="300" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Y Offset (up / down)</span><span class="valbox mono"><span id="v-offY">0</span> mm</span></div>
+          <input type="range" id="offY" min="-300" max="300" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Box Rotation</span><span class="valbox mono"><span id="v-boxRot">0</span> °</span></div>
+          <input type="range" id="boxRot" min="-45" max="45" value="0">
+        </div>
+        <div>
+          <div class="flex justify-between text-sm mb-1"><span>Shadow Rotation</span><span class="valbox mono"><span id="v-shadowRot">0</span> °</span></div>
+          <input type="range" id="shadowRot" min="-180" max="180" value="0">
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t collapsed" style="border-color:var(--line);" id="sec-material">
+      <div class="section-head" onclick="toggleSection('sec-material')">
+        <span class="text-sm font-semibold">Material</span>
+        <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+      <div class="section-body space-y-4">
+        <div id="thickTabGroup" class="space-y-4">
+          <div>
+            <div class="flex justify-between text-sm mb-1"><span>Thickness</span><span class="valbox mono"><span id="v-thick">3.0</span> mm</span></div>
+            <input type="range" id="thick" min="1.5" max="8" step="0.1" value="3.0">
+          </div>
+          <div>
+            <div class="flex justify-between text-sm mb-1"><span>Tab Width</span><span class="valbox mono"><span id="v-tab">10</span> mm</span></div>
+            <input type="range" id="tab" min="6" max="30" value="10">
+          </div>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Invert Cutout</span>
+          <div class="toggle" id="t-invertCutout" onclick="toggleInvertCutout()"><div class="dot"></div></div>
+        </div>
+        <div class="text-xs subtle -mt-2">Off — every panel keeps its full declared Depth, even past where the silhouette content ends (default). On — each panel's own physical length is cut right at the deepest real cutout (just a 1mm hairline left), removing the leftover rectangular frame instead of carrying it all the way to the front opening. All 4 side panels are trimmed to the same length so the box still closes evenly.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LASER CUT PANELS -->
+  <div>
+    <div class="eyebrow mb-2 px-1">Laser-Cut Panels</div>
+    <div class="grid grid-cols-2 gap-3" id="panelGrid"></div>
+  </div>
+
+  <div class="text-center text-xs subtle py-6">Single LED · perimeter-only projection · zero-gap nested export</div>
+</div>
+
+<div id="toast" class="toast">Processing…</div>
+
+<!-- EXPORT MODAL -->
+<div id="exportModal" class="modal-backdrop hidden">
+  <div class="modal-sheet">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-lg font-bold">Export Panels</div>
+      <button onclick="closeExport()" class="text-2xl leading-none subtle">&times;</button>
+    </div>
+    <div class="export-opt" onclick="downloadSVG()">
+      <div class="icon-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 15l2-6 2 6M9 12h2M14 9v6h2a2 2 0 002-2v-2a2 2 0 00-2-2h-2z"/></svg></div>
+      <div><div class="font-semibold">SVG</div><div class="text-xs subtle">Vector · CorelDraw, Inkscape</div></div>
+    </div>
+    <div class="export-opt" onclick="downloadPDF()">
+      <div class="icon-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg></div>
+      <div><div class="font-semibold">PDF</div><div class="text-xs subtle">Vector PDF · 1:1 scale · AutoCAD ready</div></div>
+    </div>
+    <div class="export-opt" onclick="downloadDXF()">
+      <div class="icon-badge"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M8 9l2 2-2 2M13 9l2 2-2 2"/></svg></div>
+      <div><div class="font-semibold">DXF</div><div class="text-xs subtle">AutoCAD native · 1:1 mm · OUTLINE + CUT layers</div></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/raytracer.js"></script>
+<script src="js/coverage.js"></script>
+<script src="js/contour.js"></script>
+<script src="js/svg.js"></script>
+<script src="js/preview3d.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/projection.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

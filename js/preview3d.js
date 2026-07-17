@@ -140,9 +140,8 @@ function buildPanelMesh(polyOutlineMM, holePolysMM, offsetU, thickness, basis, p
   m.makeBasis(basis.x, basis.y, basis.z);
   m.setPosition(position.x, position.y, position.z);
   geo.applyMatrix4(m);
-  const mat = new THREE.MeshStandardMaterial({color:matColor, roughness:0.85, metalness:0.05, side:THREE.DoubleSide});
+  const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = true; mesh.receiveShadow = true;
   return mesh;
 }
 

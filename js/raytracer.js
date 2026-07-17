@@ -10,17 +10,20 @@
 /* ============================================================
    GEOMETRY ENGINE
    ============================================================ */
-// A ray from inside a convex 4-wall tube crosses the boundary exactly once
-// EXCEPT when it grazes right along a corner edge (where two walls meet) —
-// there, both adjacent walls' crossing points coincide, so BOTH pass their
-// bounds check and come out "nearly tied" in t. Content aimed near the box's
-// own center axis is the worst case: it's roughly equidistant from all four
-// corners, so single-pixel noise flips the hard winner-take-all assignment
-// between panels, producing the jagged "starburst" right along the seams.
-// Tolerance is relative (fraction of the winning t) so it behaves the same
-// regardless of box size/LED depth. Wider = smoother/more blended corners,
-// narrower = only near-exact grazes get softened.
-const CORNER_TIE_EPS = 0.06;
+// The OLD approach compared the two candidates' t-ratio and only blended
+// when they were "tied" — but each candidate's own boundary check used a
+// 1e-6 tolerance meant to absorb floating-point noise, not to define a real
+// "near corner" zone. In practice that meant the blend almost NEVER
+// triggered on real image data (only when a ray landed on the mathematically
+// exact corner line), so the starburst was untouched.
+//
+// This version instead measures, in physical mm, how close the ray's hit
+// point is to the EDGE of the wall it landed on (i.e. how close to one of
+// the box's 4 corners). Within CORNER_BLEND_MM of an edge, it blends in the
+// adjacent wall too, with a weight that ramps smoothly from 0 (at the
+// margin) to 0.5 (exactly at the corner) — a real gradient across a
+// meaningful band of rays, not an all-or-nothing coin flip on exact hits.
+const CORNER_BLEND_MM = 3;
 
 function raycastPanel(Lx,Ly,Lz, Qx,Qy,Qz, boxW,boxH,boxD){
   const dx=Qx-Lx, dy=Qy-Ly, dz=Qz-Lz;
@@ -34,30 +37,58 @@ function raycastPanel(Lx,Ly,Lz, Qx,Qy,Qz, boxW,boxH,boxD){
     cands.push({t:(-boxH/2-Ly)/dy, type:'bottom'});
   }
   cands.sort((a,b)=>a.t-b.t);
-  const valid=[];
+
+  let primary=null;
   for(const c of cands){
     if(c.t<=1e-6 || c.t>1.000001) continue;
     const px=Lx+dx*c.t, py=Ly+dy*c.t, pz=Lz+dz*c.t;
     if(pz<0||pz>boxD) continue;
     if(c.type==='right'||c.type==='left'){
       if(py< -boxH/2-1e-6 || py>boxH/2+1e-6) continue;
-      valid.push({panel:c.type, u:py+boxH/2, v:pz, t:c.t});
     } else {
       if(px< -boxW/2-1e-6 || px>boxW/2+1e-6) continue;
-      valid.push({panel:c.type, u:px+boxW/2, v:pz, t:c.t});
     }
-    if(valid.length>=2) break; // only the two closest crossings matter for tie-breaking
+    primary=c; break;
   }
-  if(valid.length===0) return null;
-  if(valid.length===1) return [{...valid[0], weight:1}];
+  if(!primary) return null;
 
-  const [a,b] = valid;
-  const spread = Math.abs(b.t-a.t) / Math.max(1e-9, a.t);
-  if(spread > CORNER_TIE_EPS) return [{...a, weight:1}]; // not actually a near-tie — a is the real first hit
+  const px=Lx+dx*primary.t, py=Ly+dy*primary.t, pz=Lz+dz*primary.t;
+  const isVertWall = (primary.type==='right'||primary.type==='left');
+  const hit1 = isVertWall
+    ? {panel:primary.type, u:py+boxH/2, v:pz}
+    : {panel:primary.type, u:px+boxW/2, v:pz};
 
-  // Near-exact corner graze: split the vote instead of hard-committing to
-  // whichever side floating-point noise happened to favor.
-  return [{...a, weight:0.5}, {...b, weight:0.5}];
+  const distToOwnEdge = isVertWall ? (boxH/2 - Math.abs(py)) : (boxW/2 - Math.abs(px));
+  if(distToOwnEdge > CORNER_BLEND_MM) return [{...hit1, weight:1}];
+
+  // Extend the SAME ray to the adjacent wall on this side of the corner,
+  // clamping onto that wall's own edge if it lands just past it.
+  let adjType, adjHit=null;
+  if(isVertWall){
+    adjType = py>=0 ? 'top' : 'bottom';
+    const tAdj = ((py>=0?boxH/2:-boxH/2)-Ly)/dy;
+    if(isFinite(tAdj) && tAdj>1e-6 && tAdj<=1.000001){
+      const px2=Lx+dx*tAdj, pz2=Lz+dz*tAdj;
+      if(pz2>=0 && pz2<=boxD){
+        const pxClamped = Math.max(-boxW/2, Math.min(boxW/2, px2));
+        adjHit = {panel:adjType, u:pxClamped+boxW/2, v:pz2};
+      }
+    }
+  } else {
+    adjType = px>=0 ? 'right' : 'left';
+    const tAdj = ((px>=0?boxW/2:-boxW/2)-Lx)/dx;
+    if(isFinite(tAdj) && tAdj>1e-6 && tAdj<=1.000001){
+      const py2=Ly+dy*tAdj, pz2=Lz+dz*tAdj;
+      if(pz2>=0 && pz2<=boxD){
+        const pyClamped = Math.max(-boxH/2, Math.min(boxH/2, py2));
+        adjHit = {panel:adjType, u:pyClamped+boxH/2, v:pz2};
+      }
+    }
+  }
+  if(!adjHit) return [{...hit1, weight:1}];
+
+  const w2 = 0.5*(1 - distToOwnEdge/CORNER_BLEND_MM); // 0 at the margin, 0.5 exactly at the corner
+  return [{...hit1, weight:1-w2}, {...adjHit, weight:w2}];
 }
 
 function computeProjection(){

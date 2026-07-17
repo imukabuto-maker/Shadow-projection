@@ -25,6 +25,25 @@ function syncAutoDepth(){
   }
 }
 
+// A point LED very close to the artwork plane (small boxD - ledZ, i.e. LED
+// sitting close to the box's own depth limit) causes extreme perspective
+// magnification for content near that plane — confirmed by testing: raising
+// LED Z visibly shrinks/softens the radiating "starburst" look. Rather than
+// requiring that adjustment by hand every time, always keep LED Z at least
+// MIN_LED_Z_FRACTION of the box depth automatically — same transparent
+// pattern as Auto Depth above (the slider itself updates, nothing is hidden).
+const MIN_LED_Z_FRACTION = 0.75;
+function syncMinLedZ(){
+  const lo = parseFloat($('ledZ').min);
+  const hi = Math.min(parseFloat($('ledZ').max), state.boxD - 1);
+  const floor = Math.min(hi, Math.max(lo, state.boxD * MIN_LED_Z_FRACTION));
+  if(state.ledZ < floor){
+    state.ledZ = floor;
+    $('ledZ').value = floor;
+    $('v-ledZ').value = Math.round(floor);
+  }
+}
+
 function toggleAutoDepth(){
   state.autoDepth = !state.autoDepth;
   $('t-autoDepth').classList.toggle('on', state.autoDepth);
@@ -159,6 +178,7 @@ function renderSourceCanvas(){
    RENDERING
    ============================================================ */
 function computeProjectionAndRender(){
+  syncMinLedZ(); // auto-raise LED Z if it's too close to the box depth (see comment above)
   syncAutoDepth(); // sets Depth to the theoretical LED-Z + margin upper bound, if Auto is on
   let proj = computeProjection();
   if(state.autoDepth){

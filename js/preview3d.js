@@ -226,6 +226,18 @@ function updateWallTexture(proj, boxW, boxH, boxD, depth){
   scene3D.wallMesh.scale.set(viewW/4000, viewH/4000, 1);
 }
 
+// TEMPORARY — appends to the same on-screen debug panel from projection.js,
+// showing whether each panel's holes actually built or silently fell back to
+// solid, and why. Safe to delete alongside the rest of the debug panel code.
+function __debugMeshBuild(key, holeCount, err){
+  let el = document.getElementById('__debugPanel');
+  if(!el) return;
+  const line = err
+    ? ('mesh ' + key + ': FAILED (' + holeCount + ' holes attempted) — ' + (err && err.message ? err.message : err))
+    : ('mesh ' + key + ': OK (' + holeCount + ' holes built)');
+  el.textContent += '\n' + line;
+}
+
 function rebuild3DScene(proj){
   try{
     initThreeScene();
@@ -260,11 +272,13 @@ function rebuild3DScene(proj){
       let mesh;
       try{
         mesh = buildPanelMesh(rectOutline(d.dimW), holes, d.offsetU, thick, d.basis, d.pos, panelColor);
+        __debugMeshBuild(d.key, holes.length, null); // TEMPORARY
       } catch(err){
         // A very thin/self-intersecting hole (e.g. a fine sword-blade sliver)
         // can occasionally break triangulation. Don't let that blank the
         // whole preview — fall back to a solid panel for just this one side.
         console.warn(`3D preview: '${d.key}' panel holes failed to build, showing it solid instead.`, err);
+        __debugMeshBuild(d.key, holes.length, err); // TEMPORARY
         mesh = buildPanelMesh(rectOutline(d.dimW), [], d.offsetU, thick, d.basis, d.pos, panelColor);
       }
       scene3D.panelGroup.add(mesh);

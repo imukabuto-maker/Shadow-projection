@@ -174,6 +174,33 @@ function computeProjectionAndRender(){
   rebuild3DScene(proj);
   renderPanels(proj);
   updateClearanceWarning();
+  __showDebugPanel(proj); // TEMPORARY — remove once the empty-3D-preview issue is diagnosed
+}
+
+// TEMPORARY on-screen diagnostic panel (no desktop devtools needed on iPhone).
+// Shows the raw numbers computeProjection() actually produced. Safe to
+// delete this whole function + its one call site above once no longer needed.
+function __showDebugPanel(proj){
+  let inkPixels=0;
+  if(state.mask){ for(let i=0;i<state.mask.length;i++) if(state.mask[i]===0) inkPixels++; }
+  let lines = [];
+  lines.push('mask: ' + state.maskW + '×' + state.maskH + '  ink px: ' + inkPixels + '/' + (state.maskW*state.maskH));
+  lines.push('box: ' + state.boxW + '×' + state.boxH + '×' + state.boxD + 'mm  scale: ' + state.scale);
+  lines.push('wallImg: ' + Math.round(proj.wallImgW) + '×' + Math.round(proj.wallImgH) + 'mm');
+  lines.push('LED: x=' + proj.led.x.toFixed(1) + ' y=' + proj.led.y.toFixed(1) + ' z=' + proj.led.z.toFixed(1));
+  for(const k of ['top','bottom','left','right']){
+    const p = proj.panels[k];
+    let lit=0; for(let i=0;i<p.mask.length;i++) lit+=p.mask[i];
+    lines.push(k + ': ' + p.w + '×' + p.h + '  lit px: ' + lit);
+  }
+  let el = document.getElementById('__debugPanel');
+  if(!el){
+    el = document.createElement('pre');
+    el.id = '__debugPanel';
+    el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#000;color:#0f0;font-size:11px;line-height:1.4;padding:8px;margin:0;white-space:pre-wrap;max-height:40vh;overflow:auto;border-top:2px solid #0f0;';
+    document.body.appendChild(el);
+  }
+  el.textContent = lines.join('\n');
 }
 
 function updateClearanceWarning(){

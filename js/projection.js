@@ -171,10 +171,10 @@ function computeProjectionAndRender(){
     }
   }
   state.panels = proj;
+  __showDebugPanel(proj); // TEMPORARY — must run BEFORE rebuild3DScene, which appends its own mesh-build lines to this same panel
   rebuild3DScene(proj);
   renderPanels(proj);
   updateClearanceWarning();
-  __showDebugPanel(proj); // TEMPORARY — remove once the empty-3D-preview issue is diagnosed
 }
 
 // TEMPORARY on-screen diagnostic panel (no desktop devtools needed on iPhone).

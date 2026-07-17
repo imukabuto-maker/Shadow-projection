@@ -167,12 +167,19 @@ function updateWallTexture(proj, boxW, boxH, boxD, depth){
     const wy = -(py/res-0.5)*viewH;
     const bx = wx*cosA - wy*sinA;
     const by = wx*sinA + wy*cosA;
-    const hit = raycastPanel(Lx,Ly,Lz, bx,by,0, boxW,boxH,boxD);
-    if(!hit) return 0; // no panel intersection = physically behind/blocked by the box -> always dark
-    const p = proj.panels[hit.panel];
-    let ppx = Math.floor((hit.u/p.dimW)*p.w), ppy=Math.floor((hit.v/boxD)*p.h);
-    if(ppx>=0&&ppx<p.w&&ppy>=0&&ppy<p.h) return p.mask[ppy*p.w+ppx];
-    return 0;
+    const hits = raycastPanel(Lx,Ly,Lz, bx,by,0, boxW,boxH,boxD);
+    if(!hits) return 0; // no panel intersection = physically behind/blocked by the box -> always dark
+    // raycastPanel can return up to two weighted hits (corner-graze tie-break
+    // — see raytracer.js). Blend them the same way computeProjection does,
+    // so a corner-straddling wall sample softly averages instead of
+    // reading one arbitrary panel's data with weight 1.
+    let val = 0;
+    for(const hit of hits){
+      const p = proj.panels[hit.panel];
+      let ppx = Math.floor((hit.u/p.dimW)*p.w), ppy=Math.floor((hit.v/boxD)*p.h);
+      if(ppx>=0&&ppx<p.w&&ppy>=0&&ppy<p.h) val += p.mask[ppy*p.w+ppx]*hit.weight;
+    }
+    return val;
   }
 
   // Build the raw blend-factor grid first (0=dark..1=teal), separately from
@@ -226,18 +233,6 @@ function updateWallTexture(proj, boxW, boxH, boxD, depth){
   scene3D.wallMesh.scale.set(viewW/4000, viewH/4000, 1);
 }
 
-// TEMPORARY — appends to the same on-screen debug panel from projection.js,
-// showing whether each panel's holes actually built or silently fell back to
-// solid, and why. Safe to delete alongside the rest of the debug panel code.
-function __debugMeshBuild(key, holeCount, err){
-  let el = document.getElementById('__debugPanel');
-  if(!el) return;
-  const line = err
-    ? ('mesh ' + key + ': FAILED (' + holeCount + ' holes attempted) — ' + (err && err.message ? err.message : err))
-    : ('mesh ' + key + ': OK (' + holeCount + ' holes built)');
-  el.textContent += '\n' + line;
-}
-
 function rebuild3DScene(proj){
   try{
     initThreeScene();
@@ -272,13 +267,11 @@ function rebuild3DScene(proj){
       let mesh;
       try{
         mesh = buildPanelMesh(rectOutline(d.dimW), holes, d.offsetU, thick, d.basis, d.pos, panelColor);
-        __debugMeshBuild(d.key, holes.length, null); // TEMPORARY
       } catch(err){
         // A very thin/self-intersecting hole (e.g. a fine sword-blade sliver)
         // can occasionally break triangulation. Don't let that blank the
         // whole preview — fall back to a solid panel for just this one side.
         console.warn(`3D preview: '${d.key}' panel holes failed to build, showing it solid instead.`, err);
-        __debugMeshBuild(d.key, holes.length, err); // TEMPORARY
         mesh = buildPanelMesh(rectOutline(d.dimW), [], d.offsetU, thick, d.basis, d.pos, panelColor);
       }
       scene3D.panelGroup.add(mesh);

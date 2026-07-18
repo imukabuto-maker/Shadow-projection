@@ -153,8 +153,17 @@ function computeProjection(){
   // that budget at extreme settings, but this closes most of the gap
   // instead of leaving it fixed at 1x.
   const idealSuperSample = Math.max((wallImgW*PX_PER_MM)/mw, (wallImgH*PX_PER_MM)/mh);
-  const MAX_RAY_GRID_DIM = 2000; // perf budget: cap the *sub-sampled* grid's own width/height
-  const superSample = Math.max(1, Math.min(Math.ceil(idealSuperSample), Math.floor(MAX_RAY_GRID_DIM/Math.max(mw,mh))));
+  // Perf budget capped on TOTAL ray count, not per-axis grid size. The
+  // earlier per-axis cap (MAX_RAY_GRID_DIM / max(mw,mh)) unintentionally
+  // punished raising Raster Resolution: a bigger mw shrank the cap just as
+  // fast as it shrank the ideal supersample need, so past a certain
+  // resolution supersample got starved down to 1x again — bringing the
+  // undersampling noise right back, worse the higher Raster Resolution was
+  // set. Budgeting the TOTAL (mw*S)*(mh*S) ray count instead means a higher
+  // native resolution no longer eats its own supersampling headroom.
+  const MAX_TOTAL_RAYS = 6_000_000; // mobile-friendly compute budget
+  const maxSByBudget = Math.sqrt(MAX_TOTAL_RAYS/(mw*mh));
+  const superSample = Math.max(1, Math.min(Math.ceil(idealSuperSample), Math.floor(maxSByBudget)));
   const sw = mw*superSample, sh = mh*superSample;
 
   for(let sy=0; sy<sh; sy++){
@@ -211,20 +220,17 @@ function computeProjection(){
     // The v≈0 (wall-side) edge is where content just OUTSIDE the box's own
     // footprint gets compressed into a very thin sliver of panel depth — a
     // handful of panel-pixels there can correspond to a long, winding
-    // stretch of the silhouette's actual boundary, producing dense
-    // high-frequency noise (a jagged "grass"/comb-toothed edge) that
-    // survives the gentle global closing pass above. Close just that narrow
-    // band harder — it's thin enough that a stronger closing there won't
-    // threaten real thin details the way doing this across the whole panel
-    // would have.
-    const edgeBandMM = 2;
+    // stretch of the silhouette's actual boundary. That makes it inherently
+    // noisy: no amount of smoothing fully cleans it up, because the "noise"
+    // is really genuine (but geometrically unstable) detail being crammed
+    // into too few pixels. Rather than keep chasing a clean version of it,
+    // just don't cut anything in that sliver at all — force it solid, the
+    // same way the Device Clearance zone below already blanks out a strip.
+    // It's thin enough (a few mm) that this costs essentially no real
+    // content anywhere else on the panel.
+    const edgeBandMM = 3;
     const edgeBandRows = Math.min(p.h, Math.max(1, Math.round((edgeBandMM/boxD)*p.h)));
-    if(edgeBandRows > 1){
-      const band = closed.slice(0, p.w*edgeBandRows);
-      const bandClosed = closeMask(band, p.w, edgeBandRows, 3);
-      removeSmallComponents(bandClosed, p.w, edgeBandRows, minComponent, 'both');
-      closed.set(bandClosed, 0);
-    }
+    closed.fill(0, 0, p.w*edgeBandRows);
 
     // Device clearance zone: v (depth) runs 0=wall-side -> boxD=front/opening,
     // which maps to row index 0 -> p.h. Blank out every row inside the

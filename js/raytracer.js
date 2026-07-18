@@ -208,6 +208,24 @@ function computeProjection(){
     const closed = closeMask(finalMask, p.w, p.h, 1);
     removeSmallComponents(closed, p.w, p.h, minComponent, 'both');
 
+    // The v≈0 (wall-side) edge is where content just OUTSIDE the box's own
+    // footprint gets compressed into a very thin sliver of panel depth — a
+    // handful of panel-pixels there can correspond to a long, winding
+    // stretch of the silhouette's actual boundary, producing dense
+    // high-frequency noise (a jagged "grass"/comb-toothed edge) that
+    // survives the gentle global closing pass above. Close just that narrow
+    // band harder — it's thin enough that a stronger closing there won't
+    // threaten real thin details the way doing this across the whole panel
+    // would have.
+    const edgeBandMM = 2;
+    const edgeBandRows = Math.min(p.h, Math.max(1, Math.round((edgeBandMM/boxD)*p.h)));
+    if(edgeBandRows > 1){
+      const band = closed.slice(0, p.w*edgeBandRows);
+      const bandClosed = closeMask(band, p.w, edgeBandRows, 3);
+      removeSmallComponents(bandClosed, p.w, edgeBandRows, minComponent, 'both');
+      closed.set(bandClosed, 0);
+    }
+
     // Device clearance zone: v (depth) runs 0=wall-side -> boxD=front/opening,
     // which maps to row index 0 -> p.h. Blank out every row inside the
     // reserved depth so the controller/driver never collides with a cutout.

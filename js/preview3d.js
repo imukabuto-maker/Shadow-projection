@@ -192,26 +192,29 @@ function updateWallTexture(proj, boxW, boxH, boxD, depth){
     }
   }
 
-  // Gentle 3x3 box blur pass. This is a PURELY VISUAL smoothing step on the
-  // 3D preview's wall texture — it never touches proj.panels (the actual
-  // laser-cut mask data), so it can't affect exported files. It exists
-  // specifically to soften jagged/starburst-looking noise right around the
-  // box's own footprint, where the wall<->panel mapping is most compressed
-  // and small per-panel quantization differences get visually amplified.
-  const blurred = new Float32Array(res*res);
-  for(let py=0; py<res; py++){
-    for(let px=0; px<res; px++){
-      let sum=0, count=0;
-      for(let dy=-1; dy<=1; dy++){
-        const ny=py+dy; if(ny<0||ny>=res) continue;
-        for(let dx=-1; dx<=1; dx++){
-          const nx=px+dx; if(nx<0||nx>=res) continue;
-          sum += tGrid[ny*res+nx]; count++;
+  // Blur pass on the wall texture (PURELY VISUAL — never touches proj.panels,
+  // so the actual laser-cut mask data / exported files are unaffected). Runs
+  // twice with a 5x5 kernel: strong enough to properly smooth the residual
+  // seam jaggedness right around the box's own footprint (where the
+  // wall<->panel mapping is most compressed), not just take the edge off it.
+  function boxBlur5(src){
+    const out = new Float32Array(res*res);
+    for(let py=0; py<res; py++){
+      for(let px=0; px<res; px++){
+        let sum=0, count=0;
+        for(let dy=-2; dy<=2; dy++){
+          const ny=py+dy; if(ny<0||ny>=res) continue;
+          for(let dx=-2; dx<=2; dx++){
+            const nx=px+dx; if(nx<0||nx>=res) continue;
+            sum += src[ny*res+nx]; count++;
+          }
         }
+        out[py*res+px] = sum/count;
       }
-      blurred[py*res+px] = sum/count;
     }
+    return out;
   }
+  const blurred = boxBlur5(boxBlur5(tGrid));
 
   for(let py=0; py<res; py++){
     for(let px=0; px<res; px++){

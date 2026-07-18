@@ -61,6 +61,14 @@ function raycastPanel(Lx,Ly,Lz, Qx,Qy,Qz, boxW,boxH,boxD){
   const distToOwnEdge = isVertWall ? (boxH/2 - Math.abs(py)) : (boxW/2 - Math.abs(px));
   if(distToOwnEdge > CORNER_BLEND_MM) return [{...hit1, weight:1}];
 
+  // fade: 1 at the margin (CORNER_BLEND_MM away from the corner) -> 0 exactly
+  // at the corner. This isn't just a 50/50 redistribution between the two
+  // panels (that still left 100% of the content there, just relocated —
+  // still enough to "leak" back out as a radiating line once the wall
+  // texture re-samples it from far away). Actually suppressing the TOTAL
+  // energy near the corner means there's nothing left to leak.
+  const fade = distToOwnEdge / CORNER_BLEND_MM;
+
   // Extend the SAME ray to the adjacent wall on this side of the corner,
   // clamping onto that wall's own edge if it lands just past it.
   let adjType, adjHit=null;
@@ -85,10 +93,10 @@ function raycastPanel(Lx,Ly,Lz, Qx,Qy,Qz, boxW,boxH,boxD){
       }
     }
   }
-  if(!adjHit) return [{...hit1, weight:1}];
+  if(!adjHit) return [{...hit1, weight:fade}]; // still fade even with no valid neighbor to blend into
 
-  const w2 = 0.5*(1 - distToOwnEdge/CORNER_BLEND_MM); // 0 at the margin, 0.5 exactly at the corner
-  return [{...hit1, weight:1-w2}, {...adjHit, weight:w2}];
+  const w2 = 0.5*(1 - fade); // how much of the (already-faded) total goes to the neighbor
+  return [{...hit1, weight:(1-w2)*fade}, {...adjHit, weight:w2*fade}];
 }
 
 function computeProjection(){

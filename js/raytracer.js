@@ -141,7 +141,20 @@ function computeProjection(){
   // silhouette at high scale). Supersampling the ray grid (independent of
   // the source mask's own resolution) keeps ray density adequate as scale
   // grows, without requiring the user to also raise Raster Resolution.
-  const superSample = state.scale > 5 ? 2 : 1;
+  // Ray density has to keep up with panel raster density (PX_PER_MM, see
+  // above), or most panel pixels between actual ray hits never get sampled
+  // at all — a scattered "salt and pepper" of unlit gaps in what should be
+  // solid regions. At default settings the gap was roughly 10x (panel
+  // pixels ~10x finer than one source-mask pixel), and the old fixed
+  // "scale>5 ? 2 : 1" threshold didn't scale with that at all. Compute the
+  // supersample factor actually needed to close that gap, capped so the
+  // total ray grid (mw*S x mh*S) stays within a mobile-friendly compute
+  // budget — full elimination of aliasing isn't always reachable within
+  // that budget at extreme settings, but this closes most of the gap
+  // instead of leaving it fixed at 1x.
+  const idealSuperSample = Math.max((wallImgW*PX_PER_MM)/mw, (wallImgH*PX_PER_MM)/mh);
+  const MAX_RAY_GRID_DIM = 2000; // perf budget: cap the *sub-sampled* grid's own width/height
+  const superSample = Math.max(1, Math.min(Math.ceil(idealSuperSample), Math.floor(MAX_RAY_GRID_DIM/Math.max(mw,mh))));
   const sw = mw*superSample, sh = mh*superSample;
 
   for(let sy=0; sy<sh; sy++){

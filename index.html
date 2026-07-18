@@ -104,19 +104,28 @@
   </div>
 
   <!-- 3D BOX PREVIEW -->
-  <div class="card">
+  <div class="card" id="preview3dCard">
     <div class="flex items-center justify-between px-4 pt-4">
       <span class="eyebrow">3D Preview</span>
-      <button id="btnResetView" class="text-xs subtle flex items-center gap-1" style="background:none; border:none;">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
-        Reset view
-      </button>
+      <div class="flex items-center gap-3">
+        <button id="btnPreviewMin" onclick="togglePreviewMinimize()" class="text-xs subtle hidden" style="background:none; border:none; padding:2px 4px;" title="Minimize">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
+        </button>
+        <button id="btnPreviewPin" onclick="togglePreviewPin()" class="text-xs subtle flex items-center gap-1" style="background:none; border:none;" title="Keep visible while scrolling">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6Z"/></svg>
+          Pin
+        </button>
+        <button id="btnResetView" class="text-xs subtle flex items-center gap-1" style="background:none; border:none;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg>
+          Reset view
+        </button>
+      </div>
     </div>
-    <div class="p-4 pt-2">
+    <div class="p-4 pt-2" id="preview3dBody">
       <div class="rounded-xl overflow-hidden" style="background:#04100c; aspect-ratio:1/1; position:relative; touch-action:none;">
         <canvas id="scene3d" style="width:100%; height:100%; display:block;"></canvas>
       </div>
-      <div class="text-xs subtle mt-2 text-center">Drag to rotate · pinch or scroll to zoom · built from the actual cutout data</div>
+      <div class="text-xs subtle mt-2 text-center" id="preview3dHint">Drag to rotate · pinch or scroll to zoom · built from the actual cutout data</div>
     </div>
   </div>
 
@@ -308,13 +317,13 @@
 <!-- ?v=N cache-buster: bump this number on every deploy that touches any
      js/ file, so browsers/CDN (GitHub Pages' Fastly layer, iOS Safari's own
      cache) can't keep serving a stale copy under the same filename. -->
-<script src="js/raytracer.js?v=14"></script>
-<script src="js/coverage.js?v=14"></script>
-<script src="js/contour.js?v=14"></script>
-<script src="js/svg.js?v=14"></script>
-<script src="js/preview3d.js?v=14"></script>
-<script src="js/ui.js?v=14"></script>
-<script src="js/projection.js?v=14"></script>
-<script src="js/app.js?v=14"></script>
+<script src="js/raytracer.js?v=15"></script>
+<script src="js/coverage.js?v=15"></script>
+<script src="js/contour.js?v=15"></script>
+<script src="js/svg.js?v=15"></script>
+<script src="js/preview3d.js?v=15"></script>
+<script src="js/ui.js?v=15"></script>
+<script src="js/projection.js?v=15"></script>
+<script src="js/app.js?v=15"></script>
 </body>
 </html>

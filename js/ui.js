@@ -31,6 +31,23 @@ function toggleInvertCutout(){
   forceRecompute('geom');
 }
 
+function togglePreviewPin(){
+  const card = $('preview3dCard');
+  const pinned = card.classList.toggle('floating');
+  $('btnPreviewPin').innerHTML = pinned
+    ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6Z"/></svg> Unpin'
+    : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6Z"/></svg> Pin';
+  if(!pinned) card.classList.remove('minimized'); // unpinning always restores full view
+}
+
+function togglePreviewMinimize(){
+  const card = $('preview3dCard');
+  const minimized = card.classList.toggle('minimized');
+  $('btnPreviewMin').innerHTML = minimized
+    ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>'
+    : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>';
+}
+
 function toggleBoxMode(){
   state.boxMode = !state.boxMode;
   if(state.boxMode && state.pipeMode){ state.pipeMode = false; $('t-pipeMode').classList.remove('on'); applyPipeModeUI(); }

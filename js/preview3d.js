@@ -130,8 +130,21 @@ function buildPipeMesh3D(pipePanel, R, depth, matColor){
   // this builds the tube wall directly as a grid of small quads wrapped
   // around the circumference — each grid cell is included only if the pipe
   // mask says "solid" there, so cutouts appear as literal gaps in the mesh.
-  const segU = 96, segV = Math.max(8, Math.round(depth/4));
+  // Resolution note: this is a coarse quad-grid approximation, not the
+  // actual traced vector outline (that's what the 2D "laser-cut panel" card
+  // and the exported SVG/DXF/PDF use — those stay exact regardless of this
+  // number). Higher segU/segV just makes the 3D PREVIEW's blocky "voxel"
+  // look closer to the real smooth cutout, capped so triangle count stays
+  // mobile-friendly even on a large-radius pipe.
   const circumference = 2*Math.PI*R;
+  // Resolution note: this is a coarse quad-grid approximation, not the
+  // actual traced vector outline (that's what the 2D "laser-cut panel" card
+  // and the exported SVG/DXF/PDF use — those stay exact regardless of this
+  // number). Higher segU/segV just makes the 3D PREVIEW's blocky "voxel"
+  // look closer to the real smooth cutout, capped so triangle count stays
+  // mobile-friendly even on a large-radius pipe.
+  const segU = Math.max(96, Math.min(240, Math.round(circumference/1.5)));
+  const segV = Math.max(8, Math.min(120, Math.round(depth/1.5)));
   const positions=[], normals=[], indices=[];
 
   function sampleSolid(u,v){

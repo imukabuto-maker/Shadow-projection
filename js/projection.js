@@ -78,7 +78,7 @@ function findPanelMaxRow(p){
 // reaches — the wasted-material gap reported earlier), measure how deep the
 // real cutouts go across all 4 side panels and hug THAT instead.
 function measureTightDepth(proj, currentBoxD){
-  const sideKeys = ['top','bottom','left','right'];
+  const sideKeys = proj.isPipe ? ['pipe'] : ['top','bottom','left','right'];
   let maxRow=-1, refH=0;
   for(const k of sideKeys){
     const p = proj.panels[k];
@@ -180,14 +180,14 @@ function renderSourceCanvas(){
 function computeProjectionAndRender(){
   syncMinLedZ(); // auto-raise LED Z if it's too close to the box depth (see comment above)
   syncAutoDepth(); // sets Depth to the theoretical LED-Z + margin upper bound, if Auto is on
-  let proj = computeProjection();
+  let proj = state.pipeMode ? computeProjectionCylinder() : computeProjection();
   if(state.autoDepth){
     const tight = measureTightDepth(proj, state.boxD);
     if(tight !== null && tight < state.boxD){
       state.boxD = tight;
       $('boxD').value = tight;
       $('v-boxD').value = Math.round(tight);
-      proj = computeProjection(); // re-run once at the tighter depth for accurate final geometry
+      proj = state.pipeMode ? computeProjectionCylinder() : computeProjection(); // re-run once at the tighter depth for accurate final geometry
     }
   }
   state.panels = proj;
@@ -268,7 +268,28 @@ function buildPipeBoxStrip(){
   return { placed, totalW, totalH, guides };
 }
 
+function buildPipeCylinderLayout(){
+  // Pipe Mode export: a single rectangular pattern, width = pipe
+  // circumference, height = the effective depth. No finger joints (wraps
+  // around an existing round pipe). The left/right edges are the seam where
+  // the paper wraps back to meet itself — draw a dashed guide there too, for
+  // consistency with the box-strip mode's corner guides.
+  const proj = state.panels;
+  const pipePanel = proj.panels.pipe;
+  const localW = proj.circumference;
+  const localD = proj.effectiveDepth;
+
+  const outline = buildPlainOutline(localW, localD);
+  const cutouts = getCutoutPolygonsMM(pipePanel, localW, state.boxD);
+
+  const placed = [{ key:'pipe', outline, cutouts, x0:0, x1:localW }];
+  const guides = [[[0,0],[0,localD]], [[localW,0],[localW,localD]]]; // seam guide on both outer edges
+
+  return { placed, totalW:localW, totalH:localD, guides };
+}
+
 function buildNestedLayout(){
+  if(state.pipeMode) return buildPipeCylinderLayout();
   if(state.boxMode) return buildPipeBoxStrip();
   const proj = state.panels;
   const boxW=state.boxW, boxH=state.boxH, boxD=state.boxD, thick=state.thick, tab=state.tab;

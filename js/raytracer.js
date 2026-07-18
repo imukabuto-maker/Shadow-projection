@@ -276,3 +276,120 @@ function computeProjection(){
 
   return {panels:result, led:{x:Lx,y:Ly,z:Lz}, wallImgW, wallImgH, effectiveDepth};
 }
+
+/* ============================================================
+   PIPE MODE — cylindrical wall instead of 4 flat panels
+   Ray from LED L to wall point Q; find where it crosses the cylinder
+   x^2+y^2=R^2 within depth [0,D]. u = arc-length position around the
+   circumference (0..2*pi*R), v = depth (0=wall..D=front opening),
+   matching the flat-panel convention. A cylinder is a single continuous
+   surface with no corners, so there's no seam-blend equivalent to
+   raycastPanel's corner handling — always exactly one hit or none.
+   ============================================================ */
+function raycastCylinder(Lx,Ly,Lz, Qx,Qy,Qz, R, D){
+  const dx=Qx-Lx, dy=Qy-Ly, dz=Qz-Lz;
+  const a = dx*dx+dy*dy;
+  if(a<1e-12) return null; // ray parallel to the pipe's axis, never reaches the wall
+  const b = 2*(Lx*dx+Ly*dy);
+  const c = Lx*Lx+Ly*Ly-R*R;
+  const disc = b*b-4*a*c;
+  if(disc<0) return null;
+  const sq = Math.sqrt(disc);
+  const t1=(-b-sq)/(2*a), t2=(-b+sq)/(2*a);
+  const cands = [t1,t2].filter(t=>t>1e-6 && t<=1.000001).sort((x,y)=>x-y);
+  for(const t of cands){
+    const z = Lz+t*dz;
+    if(z<0||z>D) continue;
+    const px=Lx+t*dx, py=Ly+t*dy;
+    let theta = Math.atan2(py,px);
+    if(theta<0) theta += Math.PI*2;
+    return {u: R*theta, v: z};
+  }
+  return null;
+}
+
+function computeProjectionCylinder(){
+  const R = state.pipeRadius, D = state.boxD;
+  const circumference = 2*Math.PI*R;
+  const ledCorrection = state.thick*2;
+  const Lx = state.ledX, Ly = state.ledY+ledCorrection, Lz = Math.min(Math.max(state.ledZ,1), D-1);
+
+  const mw=state.maskW, mh=state.maskH, mask=state.mask;
+  const wallImgW = (2*R)*state.scale; // diameter is the natural "size" reference, analogous to boxW for flat mode
+  const wallImgH = wallImgW*(mh/mw);
+  const cosA=Math.cos(-state.boxRot*DEG), sinA=Math.sin(-state.boxRot*DEG);
+  const cosS=Math.cos(state.shadowRot*DEG), sinS=Math.sin(state.shadowRot*DEG);
+
+  // Same adaptive density + supersampling as computeProjection() above —
+  // see the comments there for why both matter.
+  const PX_PER_MM = Math.min(16, Math.max(8, 8*(state.scale/4)));
+  const pw = Math.max(4, Math.round(circumference*PX_PER_MM));
+  const ph = Math.max(4, Math.round(D*PX_PER_MM));
+  const total = new Float32Array(pw*ph), lit = new Float32Array(pw*ph);
+
+  const idealSuperSample = Math.max((wallImgW*PX_PER_MM)/mw, (wallImgH*PX_PER_MM)/mh);
+  const MAX_TOTAL_RAYS = 6_000_000;
+  const maxSByBudget = Math.sqrt(MAX_TOTAL_RAYS/(mw*mh));
+  const superSample = Math.max(1, Math.min(Math.ceil(idealSuperSample), Math.floor(maxSByBudget)));
+  const sw = mw*superSample, sh = mh*superSample;
+
+  for(let sy=0; sy<sh; sy++){
+    for(let sx=0; sx<sw; sx++){
+      const srcX = Math.min(mw-1, Math.floor(sx/superSample));
+      const srcY = Math.min(mh-1, Math.floor(sy/superSample));
+      const m = mask[srcY*mw+srcX];
+      const nx=(sx+0.5)/sw-0.5, ny=(sy+0.5)/sh-0.5;
+      const lx0=nx*wallImgW, ly0=-ny*wallImgH;
+      const lx = lx0*cosS - ly0*sinS + state.offX;
+      const ly = lx0*sinS + ly0*cosS + state.offY;
+      const qx = lx*cosA - ly*sinA;
+      const qy = lx*sinA + ly*cosA;
+      const hit = raycastCylinder(Lx,Ly,Lz, qx,qy,0, R, D);
+      if(!hit) continue;
+      let px = Math.floor((hit.u/circumference)*pw);
+      let py = Math.floor((hit.v/D)*ph);
+      if(px<0)px=0; if(px>=pw)px=pw-1; if(py<0)py=0; if(py>=ph)py=ph-1;
+      const idx=py*pw+px;
+      total[idx]++;
+      if(m===0) lit[idx]++;
+    }
+  }
+
+  const clearMM = Math.max(0, Math.min(state.deviceH, D));
+  const minComponent = Math.max(2,Math.round(PX_PER_MM*PX_PER_MM*0.15));
+  const finalMask = new Uint8Array(pw*ph);
+  const coverage = new Float32Array(pw*ph);
+  for(let i=0;i<finalMask.length;i++){
+    const ratio = total[i]>0 ? (lit[i]/total[i]) : 0;
+    coverage[i]=ratio;
+    finalMask[i] = (total[i]>0 && ratio>=0.5) ? 1:0;
+  }
+  const closed = closeMask(finalMask, pw, ph, 1);
+  removeSmallComponents(closed, pw, ph, minComponent, 'both');
+
+  // Same "just force it solid" fix as the flat panels for the noisy v≈0
+  // wall-side sliver (see computeProjection() above for why).
+  const edgeBandMM = 3;
+  const edgeBandRows = Math.min(ph, Math.max(1, Math.round((edgeBandMM/D)*ph)));
+  closed.fill(0, 0, pw*edgeBandRows);
+
+  const clearRows = Math.round((clearMM/D)*ph);
+  for(let row=0; row<clearRows && row<ph; row++){
+    const base=row*pw;
+    for(let col=0; col<pw; col++) closed[base+col]=0;
+  }
+  removeSmallComponents(closed, pw, ph, minComponent, 'both');
+
+  const pipePanel = {mask:closed, coverage, w:pw, h:ph, dimW:circumference, dimH:D, clearMM};
+
+  let effectiveDepth = D;
+  if(state.invertCutout){
+    const maxRow = findPanelMaxRow(pipePanel);
+    if(maxRow>=0){
+      const contentMM = ((maxRow+1)/ph)*D;
+      effectiveDepth = Math.min(D, Math.max(clearMM+1, contentMM+1));
+    }
+  }
+
+  return { panels:{pipe:pipePanel}, led:{x:Lx,y:Ly,z:Lz}, wallImgW, wallImgH, effectiveDepth, isPipe:true, circumference, R };
+}

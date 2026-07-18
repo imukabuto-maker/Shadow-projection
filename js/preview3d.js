@@ -125,6 +125,52 @@ function initThreeScene(){
   resize();
 }
 
+function buildPipeMesh3D(pipePanel, R, depth, matColor){
+  // A curved surface can't use ExtrudeGeometry the way flat panels do, so
+  // this builds the tube wall directly as a grid of small quads wrapped
+  // around the circumference — each grid cell is included only if the pipe
+  // mask says "solid" there, so cutouts appear as literal gaps in the mesh.
+  const segU = 96, segV = Math.max(8, Math.round(depth/4));
+  const circumference = 2*Math.PI*R;
+  const positions=[], normals=[], indices=[];
+
+  function sampleSolid(u,v){
+    // u wraps around [0,circumference), v in [0,depth]
+    let uu = ((u % circumference)+circumference) % circumference;
+    const px = Math.min(pipePanel.w-1, Math.max(0, Math.floor((uu/circumference)*pipePanel.w)));
+    const py = Math.min(pipePanel.h-1, Math.max(0, Math.floor((v/depth)*pipePanel.h)));
+    return pipePanel.mask[py*pipePanel.w+px] === 0; // 0 = solid material, 1 = cutout
+  }
+
+  let vi=0;
+  for(let i=0;i<segU;i++){
+    const u0 = (i/segU)*circumference, u1 = ((i+1)/segU)*circumference;
+    const th0 = u0/R, th1 = u1/R;
+    for(let j=0;j<segV;j++){
+      const v0 = (j/segV)*depth, v1 = ((j+1)/segV)*depth;
+      const uc = (u0+u1)/2, vc = (v0+v1)/2;
+      if(!sampleSolid(uc,vc)) continue; // cutout cell -> leave a gap
+      const p00=[R*Math.cos(th0), R*Math.sin(th0), v0];
+      const p10=[R*Math.cos(th1), R*Math.sin(th1), v0];
+      const p11=[R*Math.cos(th1), R*Math.sin(th1), v1];
+      const p01=[R*Math.cos(th0), R*Math.sin(th0), v1];
+      const nx=Math.cos((th0+th1)/2), ny=Math.sin((th0+th1)/2);
+      for(const p of [p00,p10,p11,p01]) positions.push(...p);
+      for(let k=0;k<4;k++) normals.push(nx,ny,0);
+      indices.push(vi,vi+1,vi+2, vi,vi+2,vi+3);
+      vi+=4;
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
+  geo.setIndex(indices);
+  const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
+  const mesh = new THREE.Mesh(geo, mat);
+  return mesh;
+}
+
 function buildPanelMesh(polyOutlineMM, holePolysMM, offsetU, thickness, basis, position, matColor){
   const shape = new THREE.Shape();
   polyOutlineMM.forEach(([u,v],i)=>{ const x=u-offsetU; if(i===0) shape.moveTo(x,v); else shape.lineTo(x,v); });
@@ -166,6 +212,14 @@ function updateWallTexture(proj, boxW, boxH, boxD, depth){
     const wy = -(py/res-0.5)*viewH;
     const bx = wx*cosA - wy*sinA;
     const by = wx*sinA + wy*cosA;
+    if(proj.isPipe){
+      const hit = raycastCylinder(Lx,Ly,Lz, bx,by,0, proj.R, boxD);
+      if(!hit) return 0;
+      const p = proj.panels.pipe;
+      let ppx = Math.floor((hit.u/proj.circumference)*p.w), ppy=Math.floor((hit.v/boxD)*p.h);
+      if(ppx>=0&&ppx<p.w&&ppy>=0&&ppy<p.h) return p.mask[ppy*p.w+ppx];
+      return 0;
+    }
     const hits = raycastPanel(Lx,Ly,Lz, bx,by,0, boxW,boxH,boxD);
     if(!hits) return 0; // no panel intersection = physically behind/blocked by the box -> always dark
     // raycastPanel can return up to two weighted hits (corner-graze tie-break
@@ -253,6 +307,10 @@ function rebuild3DScene(proj){
     const rectOutline = (dimW)=>[[0,0],[dimW,0],[dimW,depth],[0,depth]];
     const panelColor = 0x2a3838;
 
+    if(proj.isPipe){
+      const mesh = buildPipeMesh3D(proj.panels.pipe, proj.R, depth, panelColor);
+      scene3D.panelGroup.add(mesh);
+    } else {
     const defs = [
       { key:'top',    dimW:boxW, offsetU:boxW/2,
         basis:{x:V3(1,0,0), y:V3(0,0,1), z:V3(0,1,0)}, pos:V3(0, boxH/2, 0) },
@@ -280,13 +338,14 @@ function rebuild3DScene(proj){
     }
 
     // back plate: simple solid rect (its own wire-hole is cosmetic, skip in 3D for simplicity)
-    // Box Mode: no back plate at all — the existing pipe/box is open front AND back.
-    if(!state.boxMode){
+    // Box Mode / Pipe Mode: no back plate at all — the existing pipe/box is open front AND back.
+    if(!state.boxMode && !state.pipeMode){
       const backOutline = [[-boxW/2,-boxH/2],[boxW/2,-boxH/2],[boxW/2,boxH/2],[-boxW/2,boxH/2]];
       const backMesh = buildPanelMesh(backOutline, [], 0, thick,
         {x:V3(1,0,0), y:V3(0,1,0), z:V3(0,0,-1)}, V3(0,0,0), 0x1f2b2b);
       scene3D.panelGroup.add(backMesh);
     }
+    } // end flat-panel branch
 
     // LED position + light
     scene3D.ledLight.position.set(proj.led.x, proj.led.y, proj.led.z);
@@ -302,7 +361,7 @@ function rebuild3DScene(proj){
     updateWallTexture(proj, boxW, boxH, boxD, depth);
 
     // frame the camera around the box the first time (or if size changed a lot)
-    const diag = Math.hypot(boxW,boxH,depth);
+    const diag = proj.isPipe ? Math.hypot(proj.R*2, proj.R*2, depth) : Math.hypot(boxW,boxH,depth);
     scene3D.camState.target.set(0,0,depth/2);
     const desiredR = Math.max(150, diag*1.6);
     scene3D.defaultRadius = desiredR;
@@ -319,7 +378,47 @@ function rebuild3DScene(proj){
   }
 }
 
+function renderPipePanel(proj){
+  const grid = $('panelGrid');
+  grid.innerHTML='';
+  const p = proj.panels.pipe;
+  const localW = proj.circumference, localD = proj.effectiveDepth;
+  const outline = buildPlainOutline(localW, localD); // pipes never get finger-joint interlock
+  const cutouts = panelCutoutPaths(p.mask, p.w, p.h, localW, localD, p.coverage);
+  const pad = 4;
+  const vbW = localW+pad*2, vbH = localD+pad*2;
+  const outlineD = pathDFromPoints(outline.map(pt=>[pt[0]+pad, pt[1]+pad]), true);
+  const cutD = cutouts.map(d=>{
+    return d.replace(/(-?\d+\.?\d*) (-?\d+\.?\d*)/g, (m,a,b)=>`${(parseFloat(a)+pad).toFixed(2)} ${(parseFloat(b)+pad).toFixed(2)}`);
+  }).join(' ');
+  const clearMM = Math.max(0, Math.min(state.deviceH, localD));
+  const clearLineD = clearMM>0
+    ? `<line x1="${pad}" y1="${pad+clearMM}" x2="${pad+localW}" y2="${pad+clearMM}" stroke="#ffcc55" stroke-width="0.7" stroke-dasharray="2,1.5"/>
+       <text x="${vbW-pad+2}" y="${pad+clearMM-1.5}" font-size="3.4" fill="#ffcc55" text-anchor="end">device ${Math.round(clearMM)}mm</text>`
+    : '';
+
+  const card = document.createElement('div');
+  card.className='card overflow-hidden col-span-2';
+  card.innerHTML = `
+    <div class="px-3 pt-3 flex justify-between items-center">
+      <span class="text-xs font-semibold">PIPE — UNROLLED WRAP</span>
+      <span class="panel-preview-label">${Math.round(localW)}×${Math.round(localD)}MM · R${Math.round(proj.R)}</span>
+    </div>
+    <div class="p-2">
+      <svg viewBox="0 0 ${vbW} ${vbH}" style="width:100%; background:#0c1315; border-radius:8px;">
+        <text x="${vbW/2}" y="${pad-4}" font-size="4" fill="#5c716d" text-anchor="middle">WALL SIDE ▲</text>
+        <path d="${outlineD}" fill="none" stroke="#3a4a48" stroke-width="0.8"/>
+        <path d="${cutD}" fill="none" stroke="#ff3f63" stroke-width="0.9"/>
+        ${clearLineD}
+        <text x="${vbW/2}" y="${vbH-3}" font-size="4" fill="#5c716d" text-anchor="middle">FRONT / OPENING ▼</text>
+      </svg>
+    </div>
+    <div class="px-3 pb-3 text-xs subtle">Wrap this pattern around the pipe's circumference (${Math.round(localW)}mm) — the left and right edges meet back-to-back at the seam.</div>`;
+  grid.appendChild(card);
+}
+
 function renderPanels(proj){
+  if(proj.isPipe){ renderPipePanel(proj); return; }
   const order = [
     {key:'top', label:'Top', dimW:state.boxW},
     {key:'right', label:'Right', dimW:state.boxH},

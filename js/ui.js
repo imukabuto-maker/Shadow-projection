@@ -11,12 +11,12 @@ const sliderMap = [
   ['smoothing','smoothing',1,'geom'], ['boxW','boxW',0,'geom'], ['boxH','boxH',0,'geom'], ['boxD','boxD',0,'geom'],
   ['ledZ','ledZ',0,'geom'], ['ledX','ledX',0,'geom'], ['ledY','ledY',0,'geom'], ['deviceH','deviceH',0,'geom'],
   ['scale','scale',1,'geom'], ['offX','offX',0,'geom'], ['offY','offY',0,'geom'], ['boxRot','boxRot',0,'geom'], ['shadowRot','shadowRot',0,'geom'],
-  ['thick','thick',1,'geom'], ['tab','tab',0,'geom']
+  ['thick','thick',1,'geom'], ['tab','tab',0,'geom'], ['pipeRadius','pipeRadius',0,'geom']
 ];
 const labelIdMap = { threshold:'v-threshold', noise:'v-noise', resolution:'v-res', smoothing:'v-smooth',
   boxW:'v-boxW', boxH:'v-boxH', boxD:'v-boxD', ledZ:'v-ledZ', ledX:'v-ledX', ledY:'v-ledY', deviceH:'v-deviceH',
   scale:'v-scale', offX:'v-offX', offY:'v-offY', boxRot:'v-boxRot', shadowRot:'v-shadowRot',
-  thick:'v-thick', tab:'v-tab' };
+  thick:'v-thick', tab:'v-tab', pipeRadius:'v-pipeRadius' };
 
 function toggleSection(id){ $(id).classList.toggle('collapsed'); }
 function toggleBool(key){
@@ -33,11 +33,30 @@ function toggleInvertCutout(){
 
 function toggleBoxMode(){
   state.boxMode = !state.boxMode;
+  if(state.boxMode && state.pipeMode){ state.pipeMode = false; $('t-pipeMode').classList.remove('on'); applyPipeModeUI(); }
   $('t-boxMode').classList.toggle('on', state.boxMode);
-  $('thickTabGroup').style.display = state.boxMode ? 'none' : '';
+  $('thickTabGroup').style.display = (state.boxMode||state.pipeMode) ? 'none' : '';
   $('boxModeHint').textContent = state.boxMode
     ? "On — Back Plate is skipped, panel outlines are plain (no finger joints), and Export gives one continuous wrap-around strip sized to the box's exact circumference, ready to print and glue/tape on."
     : "Off — designs a laser-cut acrylic box from scratch, with finger-joint interlocks and a Back Plate. Turn on if you already have a plastic box/tube and just want a wrap-around paper pattern to drill or cut by hand.";
+  forceRecompute('geom');
+}
+
+function applyPipeModeUI(){
+  $('pipeRadiusGroup').classList.toggle('hidden', !state.pipeMode);
+  $('widthHeightGroup').style.display = state.pipeMode ? 'none' : '';
+  $('depthLabel').textContent = state.pipeMode ? 'Length' : 'Depth';
+  $('thickTabGroup').style.display = (state.boxMode||state.pipeMode) ? 'none' : '';
+  $('pipeModeHint').textContent = state.pipeMode
+    ? "On — projection, preview, and export all switch to a single wrapped cylindrical surface (no Back Plate, no interlock). Set Pipe Radius below."
+    : "Off. Turn on if your existing tube is round instead of a 4-sided box — the projection math, preview, and export pattern all switch to a wrapped cylindrical surface instead of 4 flat sides.";
+}
+
+function togglePipeMode(){
+  state.pipeMode = !state.pipeMode;
+  if(state.pipeMode && state.boxMode){ state.boxMode = false; $('t-boxMode').classList.remove('on'); }
+  $('t-pipeMode').classList.toggle('on', state.pipeMode);
+  applyPipeModeUI();
   forceRecompute('geom');
 }
 

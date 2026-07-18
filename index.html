@@ -132,6 +132,7 @@
         <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
       </div>
       <div class="section-body space-y-4">
+        <div id="widthHeightGroup" class="space-y-4">
         <div>
           <div class="flex justify-between text-sm mb-1"><span>Width</span><span class="valbox mono"><span id="v-boxW">200</span> mm</span></div>
           <input type="range" id="boxW" min="60" max="500" value="200">
@@ -140,8 +141,9 @@
           <div class="flex justify-between text-sm mb-1"><span>Height</span><span class="valbox mono"><span id="v-boxH">150</span> mm</span></div>
           <input type="range" id="boxH" min="60" max="500" value="150">
         </div>
+        </div>
         <div>
-          <div class="flex justify-between text-sm mb-1"><span>Depth</span><span class="valbox mono"><span id="v-boxD">80</span> mm</span></div>
+          <div class="flex justify-between text-sm mb-1"><span id="depthLabel">Depth</span><span class="valbox mono"><span id="v-boxD">80</span> mm</span></div>
           <input type="range" id="boxD" min="15" max="300" value="80">
           <div class="flex items-center justify-between mt-2">
             <span class="text-xs subtle">Auto (= LED Z + margin)</span>
@@ -163,6 +165,17 @@
           <div class="toggle" id="t-boxMode" onclick="toggleBoxMode()"><div class="dot"></div></div>
         </div>
         <div class="text-xs subtle -mt-2" id="boxModeHint">Off — designs a laser-cut acrylic box from scratch, with finger-joint interlocks and a Back Plate. Turn on if you already have a plastic box/tube and just want a wrap-around paper pattern to drill or cut by hand.</div>
+
+        <div class="flex items-center justify-between">
+          <span class="text-sm">Existing Pipe (cylindrical)</span>
+          <div class="toggle" id="t-pipeMode" onclick="togglePipeMode()"><div class="dot"></div></div>
+        </div>
+        <div class="text-xs subtle -mt-2" id="pipeModeHint">Off. Turn on if your existing tube is round instead of a 4-sided box — the projection math, preview, and export pattern all switch to a wrapped cylindrical surface instead of 4 flat sides.</div>
+        <div id="pipeRadiusGroup" class="hidden">
+          <div class="flex justify-between text-sm mb-1"><span>Pipe Radius</span><span class="valbox mono"><span id="v-pipeRadius">40</span> mm</span></div>
+          <input type="range" id="pipeRadius" min="10" max="250" value="40">
+          <div class="text-xs subtle mt-1">Measure the INSIDE radius of your pipe (half the inside diameter) — this is where the wall surface actually sits.</div>
+        </div>
       </div>
     </div>
 
@@ -295,13 +308,13 @@
 <!-- ?v=N cache-buster: bump this number on every deploy that touches any
      js/ file, so browsers/CDN (GitHub Pages' Fastly layer, iOS Safari's own
      cache) can't keep serving a stale copy under the same filename. -->
-<script src="js/raytracer.js?v=13"></script>
-<script src="js/coverage.js?v=13"></script>
-<script src="js/contour.js?v=13"></script>
-<script src="js/svg.js?v=13"></script>
-<script src="js/preview3d.js?v=13"></script>
-<script src="js/ui.js?v=13"></script>
-<script src="js/projection.js?v=13"></script>
-<script src="js/app.js?v=13"></script>
+<script src="js/raytracer.js?v=14"></script>
+<script src="js/coverage.js?v=14"></script>
+<script src="js/contour.js?v=14"></script>
+<script src="js/svg.js?v=14"></script>
+<script src="js/preview3d.js?v=14"></script>
+<script src="js/ui.js?v=14"></script>
+<script src="js/projection.js?v=14"></script>
+<script src="js/app.js?v=14"></script>
 </body>
 </html>

@@ -16,7 +16,7 @@ const state = {
   ledZ:40, ledX:0, ledY:0, deviceH:0,
   autoDepth:false,
   scale:4.0, offX:0, offY:0, boxRot:0, shadowRot:0,
-  thick:3.0, tab:10, invertCutout:false, boxMode:false,
+  thick:3.0, tab:10, invertCutout:false, boxMode:false, pipeMode:false, pipeRadius:40,
   mask:null, maskW:0, maskH:0,       // processed binary silhouette (1 = silhouette ink)
   hasImage:false,
   panels:null                        // computed panel data {top,bottom,left,right}

@@ -137,7 +137,23 @@ function buildPipeMesh3D(pipePanel, R, depth, thickness, matColor){
   const holes = getCutoutPolygonsMM(pipePanel, circumference, depth).filter(h => polygonAreaMM(h) > 0.05);
 
   const shape = new THREE.Shape();
-  shape.moveTo(0,0); shape.lineTo(circumference,0); shape.lineTo(circumference,depth); shape.lineTo(0,depth); shape.closePath();
+  // The outer rectangle's top/bottom edges run along the circumference
+  // direction — they MUST be built from many points, not just the 4 corners
+  // via lineTo(). A straight lineTo() has no interior vertices, so bending
+  // its 2 endpoints (angle 0 and angle 2*pi — the SAME point on the circle)
+  // onto the cylinder collapsed the whole panel into a flat, twisted shape
+  // instead of a tube. The two short seam edges (left/right, running along
+  // the tube's straight length axis) don't curve, so a couple of points is
+  // enough for those.
+  const segOuter = Math.max(48, Math.min(240, Math.round(circumference/2)));
+  for(let i=0;i<=segOuter;i++){
+    const x=(i/segOuter)*circumference;
+    if(i===0) shape.moveTo(x,0); else shape.lineTo(x,0);
+  }
+  shape.lineTo(circumference,depth);
+  for(let i=segOuter;i>=0;i--) shape.lineTo((i/segOuter)*circumference, depth);
+  shape.lineTo(0,0);
+  shape.closePath();
   holes.forEach(hole=>{
     if(hole.length<3) return;
     const path = new THREE.Path();

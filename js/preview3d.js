@@ -125,54 +125,59 @@ function initThreeScene(){
   resize();
 }
 
+function pointInPolygonMM(x, y, poly){
+  // Standard ray-casting point-in-polygon test.
+  let inside = false;
+  for(let i=0, j=poly.length-1; i<poly.length; j=i++){
+    const xi=poly[i][0], yi=poly[i][1], xj=poly[j][0], yj=poly[j][1];
+    if(((yi>y) !== (yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi)) inside = !inside;
+  }
+  return inside;
+}
+
 function buildPipeMesh3D(pipePanel, R, depth, matColor){
-  // Fully self-contained: triangulate the flat shape+holes ourselves via
-  // THREE.ShapeUtils.triangulateShape (the same low-level utility
-  // ExtrudeGeometry uses internally), then build every triangle vertex
-  // ALREADY bent onto the cylinder. This sidesteps ExtrudeGeometry/Shape's
-  // own internal point handling entirely — in flat 2D space, the many
-  // points added along the long straight top/bottom edges are perfectly
-  // collinear (same y, only x differs), which is exactly the kind of thing
-  // geometry libraries sometimes simplify away since it doesn't change the
-  // flat shape's outline — but those "redundant" points are exactly what
-  // this needs to trace a smooth circle once bent. Doing the bend ourselves,
-  // vertex-by-vertex, while WE still control the point list guarantees none
-  // of that subdivision can get silently discarded first.
+  // Every quad is computed directly in cylindrical coordinates from the
+  // start (angle -> R*cos/R*sin, no separate flat-shape-then-bend stage —
+  // that approach kept producing distorted geometry). Solid/cutout is
+  // decided with a point-in-polygon test against the SAME smooth vector
+  // hole outlines (getCutoutPolygonsMM) that drive the 2D "laser-cut panel"
+  // card and the exported SVG/DXF/PDF, so cell edges follow the real cutout
+  // shape rather than the raw raster mask.
   const circumference = 2*Math.PI*R;
   const holes = getCutoutPolygonsMM(pipePanel, circumference, depth).filter(h => polygonAreaMM(h) > 0.05);
 
-  const segOuter = Math.max(64, Math.min(360, Math.round(circumference/1.5)));
-  const contour = [];
-  for(let i=0;i<segOuter;i++) contour.push(new THREE.Vector2(i*circumference/segOuter, 0)); // bottom edge
-  contour.push(new THREE.Vector2(circumference, 0));    // bottom-right corner
-  contour.push(new THREE.Vector2(circumference, depth)); // top-right corner
-  for(let i=segOuter-1;i>=1;i--) contour.push(new THREE.Vector2(i*circumference/segOuter, depth)); // top edge
-  contour.push(new THREE.Vector2(0, depth)); // top-left corner (closes back to contour[0]=(0,0) implicitly)
-
-  const holeContours = holes.filter(h=>h.length>=3).map(hole => hole.map(([u,v]) =>
-    new THREE.Vector2(Math.max(0, Math.min(circumference, u)), Math.max(0, Math.min(depth, v)))
-  ));
-
-  let faces;
-  try{
-    faces = THREE.ShapeUtils.triangulateShape(contour, holeContours);
-  } catch(err){
-    console.warn('Pipe mesh triangulation failed, showing a solid tube instead.', err);
-    faces = THREE.ShapeUtils.triangulateShape(contour, []);
+  function isCutout(u, v){
+    for(const hole of holes) if(pointInPolygonMM(u, v, hole)) return true;
+    return false;
   }
 
-  const allPts2D = contour.concat(...holeContours);
-  const bend = (p2)=>{ const theta = p2.x/R; return [R*Math.cos(theta), R*Math.sin(theta), p2.y]; };
-  const bentPts = allPts2D.map(bend);
-
-  const positions=[];
-  for(const [a,b,c] of faces){
-    positions.push(...bentPts[a], ...bentPts[b], ...bentPts[c]);
+  const segU = 120;
+  const segV = Math.max(8, Math.round(depth/2));
+  const positions=[], normals=[], indices=[];
+  let vi=0;
+  for(let i=0;i<segU;i++){
+    const u0=(i/segU)*circumference, u1=((i+1)/segU)*circumference;
+    const th0=u0/R, th1=u1/R;
+    for(let j=0;j<segV;j++){
+      const v0=(j/segV)*depth, v1=((j+1)/segV)*depth;
+      const uc=(u0+u1)/2, vc=(v0+v1)/2;
+      if(isCutout(uc,vc)) continue; // cell falls inside a cutout polygon -> leave a gap
+      const p00=[R*Math.cos(th0), R*Math.sin(th0), v0];
+      const p10=[R*Math.cos(th1), R*Math.sin(th1), v0];
+      const p11=[R*Math.cos(th1), R*Math.sin(th1), v1];
+      const p01=[R*Math.cos(th0), R*Math.sin(th0), v1];
+      const nx=Math.cos((th0+th1)/2), ny=Math.sin((th0+th1)/2);
+      for(const p of [p00,p10,p11,p01]) positions.push(...p);
+      for(let k=0;k<4;k++) normals.push(nx,ny,0);
+      indices.push(vi,vi+1,vi+2, vi,vi+2,vi+3);
+      vi+=4;
+    }
   }
 
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
-  geo.computeVertexNormals();
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
+  geo.setIndex(indices);
   const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
   return new THREE.Mesh(geo, mat);
 }

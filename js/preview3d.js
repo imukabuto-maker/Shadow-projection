@@ -125,53 +125,54 @@ function initThreeScene(){
   resize();
 }
 
-function buildPipeMesh3D(pipePanel, R, depth, thickness, matColor){
-  // Builds a FLAT shape+holes exactly the same way buildPanelMesh() does for
-  // the box panels — using the same getCutoutPolygonsMM() vector data that
-  // drives the 2D "laser-cut panel" card and the exported SVG/DXF/PDF — then
-  // "bends" every vertex of the resulting geometry onto the cylinder
-  // (arc-length position -> angle, extrusion depth -> radius). That's what
-  // guarantees the 3D preview's cutout edges are the exact same curve as
-  // what actually gets cut, not a separate lower-resolution approximation.
+function buildPipeMesh3D(pipePanel, R, depth, matColor){
+  // Fully self-contained: triangulate the flat shape+holes ourselves via
+  // THREE.ShapeUtils.triangulateShape (the same low-level utility
+  // ExtrudeGeometry uses internally), then build every triangle vertex
+  // ALREADY bent onto the cylinder. This sidesteps ExtrudeGeometry/Shape's
+  // own internal point handling entirely — in flat 2D space, the many
+  // points added along the long straight top/bottom edges are perfectly
+  // collinear (same y, only x differs), which is exactly the kind of thing
+  // geometry libraries sometimes simplify away since it doesn't change the
+  // flat shape's outline — but those "redundant" points are exactly what
+  // this needs to trace a smooth circle once bent. Doing the bend ourselves,
+  // vertex-by-vertex, while WE still control the point list guarantees none
+  // of that subdivision can get silently discarded first.
   const circumference = 2*Math.PI*R;
   const holes = getCutoutPolygonsMM(pipePanel, circumference, depth).filter(h => polygonAreaMM(h) > 0.05);
 
-  const shape = new THREE.Shape();
-  // The outer rectangle's top/bottom edges run along the circumference
-  // direction — they MUST be built from many points, not just the 4 corners
-  // via lineTo(). A straight lineTo() has no interior vertices, so bending
-  // its 2 endpoints (angle 0 and angle 2*pi — the SAME point on the circle)
-  // onto the cylinder collapsed the whole panel into a flat, twisted shape
-  // instead of a tube. The two short seam edges (left/right, running along
-  // the tube's straight length axis) don't curve, so a couple of points is
-  // enough for those.
-  const segOuter = Math.max(48, Math.min(240, Math.round(circumference/2)));
-  for(let i=0;i<=segOuter;i++){
-    const x=(i/segOuter)*circumference;
-    if(i===0) shape.moveTo(x,0); else shape.lineTo(x,0);
-  }
-  shape.lineTo(circumference,depth);
-  for(let i=segOuter;i>=0;i--) shape.lineTo((i/segOuter)*circumference, depth);
-  shape.lineTo(0,0);
-  shape.closePath();
-  holes.forEach(hole=>{
-    if(hole.length<3) return;
-    const path = new THREE.Path();
-    hole.forEach(([u,v],i)=>{ if(i===0) path.moveTo(u,v); else path.lineTo(u,v); });
-    shape.holes.push(path);
-  });
+  const segOuter = Math.max(64, Math.min(360, Math.round(circumference/1.5)));
+  const contour = [];
+  for(let i=0;i<segOuter;i++) contour.push(new THREE.Vector2(i*circumference/segOuter, 0)); // bottom edge
+  contour.push(new THREE.Vector2(circumference, 0));    // bottom-right corner
+  contour.push(new THREE.Vector2(circumference, depth)); // top-right corner
+  for(let i=segOuter-1;i>=1;i--) contour.push(new THREE.Vector2(i*circumference/segOuter, depth)); // top edge
+  contour.push(new THREE.Vector2(0, depth)); // top-left corner (closes back to contour[0]=(0,0) implicitly)
 
-  const geo = new THREE.ExtrudeGeometry(shape, {depth:thickness, bevelEnabled:false, curveSegments:1, steps:1});
-  const pos = geo.attributes.position;
-  for(let i=0;i<pos.count;i++){
-    const sx=pos.getX(i), sy=pos.getY(i), sz=pos.getZ(i);
-    const theta = sx/R;             // arc-length position -> angle around the tube
-    const radius = R + sz;          // wall thickness extrudes radially outward
-    pos.setXYZ(i, radius*Math.cos(theta), radius*Math.sin(theta), sy);
-  }
-  pos.needsUpdate = true;
-  geo.computeVertexNormals(); // flat-shape normals are meaningless after bending — recompute from the curved result
+  const holeContours = holes.filter(h=>h.length>=3).map(hole => hole.map(([u,v]) =>
+    new THREE.Vector2(Math.max(0, Math.min(circumference, u)), Math.max(0, Math.min(depth, v)))
+  ));
 
+  let faces;
+  try{
+    faces = THREE.ShapeUtils.triangulateShape(contour, holeContours);
+  } catch(err){
+    console.warn('Pipe mesh triangulation failed, showing a solid tube instead.', err);
+    faces = THREE.ShapeUtils.triangulateShape(contour, []);
+  }
+
+  const allPts2D = contour.concat(...holeContours);
+  const bend = (p2)=>{ const theta = p2.x/R; return [R*Math.cos(theta), R*Math.sin(theta), p2.y]; };
+  const bentPts = allPts2D.map(bend);
+
+  const positions=[];
+  for(const [a,b,c] of faces){
+    positions.push(...bentPts[a], ...bentPts[b], ...bentPts[c]);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  geo.computeVertexNormals();
   const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
   return new THREE.Mesh(geo, mat);
 }
@@ -313,7 +314,7 @@ function rebuild3DScene(proj){
     const panelColor = 0x2a3838;
 
     if(proj.isPipe){
-      const mesh = buildPipeMesh3D(proj.panels.pipe, proj.R, depth, thick, panelColor);
+      const mesh = buildPipeMesh3D(proj.panels.pipe, proj.R, depth, panelColor);
       scene3D.panelGroup.add(mesh);
     } else {
     const defs = [

@@ -233,18 +233,30 @@ function computeProjection(){
     closed.fill(0, 0, p.w*edgeBandRows);
 
     // Device clearance zone: v (depth) runs 0=wall-side -> boxD=front/opening,
-    // which maps to row index 0 -> p.h. Blank out every row inside the
-    // reserved depth so the controller/driver never collides with a cutout.
+    // which maps to row index 0 -> p.h. Rather than deleting whatever
+    // content falls inside the reserved depth, SHIFT the entire pattern
+    // deeper (away from the wall) by that amount, so nothing is lost — the
+    // vacated strip right at the wall becomes solid (nothing can print
+    // there anyway, since it's reserved for the controller/driver), and
+    // only content that was already at the very deepest/dimmest edge (near
+    // the LED's own reach limit) gets pushed past the panel's far end and
+    // clipped — a much smaller loss than blanking the whole near-wall zone.
     const clearRows = Math.round((clearMM/boxD)*p.h);
-    for(let row=0; row<clearRows && row<p.h; row++){
-      const base = row*p.w;
-      for(let col=0; col<p.w; col++) closed[base+col]=0;
+    if(clearRows > 0 && clearRows < p.h){
+      const shiftedMask = new Uint8Array(p.w*p.h); // defaults to 0 (solid)
+      const shiftedCov = new Float32Array(p.w*p.h);
+      for(let row=0; row<p.h-clearRows; row++){
+        const src = row*p.w, dst = (row+clearRows)*p.w;
+        shiftedMask.set(closed.subarray(src, src+p.w), dst);
+        shiftedCov.set(coverage.subarray(src, src+p.w), dst);
+      }
+      closed.set(shiftedMask);
+      coverage.set(shiftedCov);
+    } else if(clearRows >= p.h){
+      closed.fill(0); // clearance reserves the entire panel depth — nothing fits
     }
-    // The hard cut above can slice through real content or leave tiny
-    // fragments right along that new boundary — clean up again so nothing
-    // jagged survives right at the clearance line (this was showing up as a
-    // scribbly "noise" patch that looked like a light leak, but was really
-    // just an un-cleaned edge artifact from the forced cut).
+    // The shift can leave tiny fragments right along the new boundary —
+    // clean up again so nothing jagged survives right at the clearance line.
     removeSmallComponents(closed, p.w, p.h, minComponent, 'both');
 
     result[k]={mask:closed, coverage, w:p.w, h:p.h, dimW:p.dimW, dimH:boxD, clearMM};
@@ -374,9 +386,18 @@ function computeProjectionCylinder(){
   closed.fill(0, 0, pw*edgeBandRows);
 
   const clearRows = Math.round((clearMM/D)*ph);
-  for(let row=0; row<clearRows && row<ph; row++){
-    const base=row*pw;
-    for(let col=0; col<pw; col++) closed[base+col]=0;
+  if(clearRows > 0 && clearRows < ph){
+    const shiftedMask = new Uint8Array(pw*ph);
+    const shiftedCov = new Float32Array(pw*ph);
+    for(let row=0; row<ph-clearRows; row++){
+      const src = row*pw, dst = (row+clearRows)*pw;
+      shiftedMask.set(closed.subarray(src, src+pw), dst);
+      shiftedCov.set(coverage.subarray(src, src+pw), dst);
+    }
+    closed.set(shiftedMask);
+    coverage.set(shiftedCov);
+  } else if(clearRows >= ph){
+    closed.fill(0);
   }
   removeSmallComponents(closed, pw, ph, minComponent, 'both');
 

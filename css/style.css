@@ -45,16 +45,15 @@
   .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--teal-dim); color:var(--teal); padding:10px 18px; border-radius:10px; font-size:13px; z-index:80; opacity:0; transition:opacity .25s;}
   .toast.show{opacity:1;}
 
-  /* 3D Preview: floating + minimize, so it stays visible while adjusting
-     sliders further down the page instead of scrolling out of view. */
+  /* 3D Preview: floating + minimize + drag, so it stays visible and can be
+     moved out of the way while adjusting sliders further down the page. */
   #preview3dCard.floating{
-    position:fixed; left:12px; right:12px; bottom:12px; top:auto;
-    max-width:280px; margin-left:auto; z-index:70;
+    position:fixed; width:220px; z-index:70;
     box-shadow:0 10px 30px rgba(0,0,0,.55);
     border:1px solid var(--teal-dim);
     max-height:70vh; overflow:auto;
   }
+  #preview3dCard.floating #preview3dHeader{ cursor:move; touch-action:none; user-select:none; }
   #preview3dCard.floating #preview3dHint{ display:none; }
   #preview3dCard.floating.minimized #preview3dBody{ display:none; }
-  #preview3dCard.floating #btnPreviewMin{ display:inline-flex !important; }
   #preview3dCard.floating #btnPreviewPin{ color:var(--teal); }

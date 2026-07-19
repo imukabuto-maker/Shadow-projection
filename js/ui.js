@@ -31,21 +31,77 @@ function toggleInvertCutout(){
   forceRecompute('geom');
 }
 
+const PREVIEW_DEFAULT_W = 220;
+
 function togglePreviewPin(){
   const card = $('preview3dCard');
   const pinned = card.classList.toggle('floating');
-  $('btnPreviewPin').innerHTML = pinned
-    ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><path d="M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6Z"/></svg> Unpin'
-    : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3-1-6Z"/></svg> Pin';
-  if(!pinned) card.classList.remove('minimized'); // unpinning always restores full view
+  $('labelPreviewPin').textContent = pinned ? 'Unpin' : 'Pin';
+  $('btnPreviewMin').style.display = pinned ? 'inline-flex' : 'none';
+  if(pinned){
+    if(!card.dataset.positioned){
+      // default spot: bottom-right, clear of the bottom nav / export modal area
+      const w = PREVIEW_DEFAULT_W, h = card.offsetHeight || 260;
+      card.style.left = Math.max(8, window.innerWidth - w - 12) + 'px';
+      card.style.top = Math.max(8, window.innerHeight - h - 90) + 'px';
+      card.dataset.positioned = '1';
+    }
+  } else {
+    card.classList.remove('minimized'); // unpinning always restores full view
+    $('iconPreviewMin').outerHTML = '<svg id="iconPreviewMin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>';
+    card.style.left = ''; card.style.top = '';
+    delete card.dataset.positioned;
+  }
 }
 
 function togglePreviewMinimize(){
   const card = $('preview3dCard');
   const minimized = card.classList.toggle('minimized');
-  $('btnPreviewMin').innerHTML = minimized
-    ? '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>'
-    : '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>';
+  $('iconPreviewMin').outerHTML = minimized
+    ? '<svg id="iconPreviewMin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>'
+    : '<svg id="iconPreviewMin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>';
+  $('preview3dTitle').textContent = minimized ? '3D Preview (tap to expand)' : '3D Preview';
+}
+
+function initPreviewDrag(){
+  // Drag-to-move for the floating 3D Preview window, like a normal desktop
+  // window titlebar. A pointerdown/up pair with very little movement is
+  // treated as a tap (toggles minimize) rather than a drag, so users can
+  // still tap the header itself to restore a minimized window without
+  // needing to hit the small icon precisely.
+  const header = $('preview3dHeader');
+  const card = $('preview3dCard');
+  let drag = null;
+  header.addEventListener('pointerdown', (e)=>{
+    if(!card.classList.contains('floating')) return;
+    if(e.target.closest('button')) return; // let button clicks behave normally
+    const rect = card.getBoundingClientRect();
+    drag = { startX:e.clientX, startY:e.clientY, startLeft:rect.left, startTop:rect.top, moved:false };
+    card.style.left = rect.left+'px';
+    card.style.top = rect.top+'px';
+    card.dataset.positioned = '1';
+    try{ header.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  header.addEventListener('pointermove', (e)=>{
+    if(!drag) return;
+    const dx = e.clientX-drag.startX, dy = e.clientY-drag.startY;
+    if(Math.abs(dx)>4 || Math.abs(dy)>4) drag.moved = true;
+    const margin = 24;
+    const w = card.offsetWidth, h = card.offsetHeight;
+    let newLeft = drag.startLeft+dx, newTop = drag.startTop+dy;
+    newLeft = Math.max(-w+margin, Math.min(window.innerWidth-margin, newLeft));
+    newTop = Math.max(0, Math.min(window.innerHeight-margin, newTop));
+    card.style.left = newLeft+'px';
+    card.style.top = newTop+'px';
+  });
+  function endDrag(e){
+    if(!drag) return;
+    const wasTap = !drag.moved;
+    drag = null;
+    if(wasTap && card.classList.contains('minimized') && !e.target.closest('button')) togglePreviewMinimize();
+  }
+  header.addEventListener('pointerup', endDrag);
+  header.addEventListener('pointercancel', endDrag);
 }
 
 function toggleBoxMode(){
@@ -207,4 +263,6 @@ function initUI(){
 
   $('btnExport').addEventListener('click', openExport);
   $('exportModal').addEventListener('click', (e)=>{ if(e.target.id==='exportModal') closeExport(); });
+
+  initPreviewDrag();
 }

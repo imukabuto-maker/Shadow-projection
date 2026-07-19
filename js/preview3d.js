@@ -125,63 +125,39 @@ function initThreeScene(){
   resize();
 }
 
-function buildPipeMesh3D(pipePanel, R, depth, matColor){
-  // A curved surface can't use ExtrudeGeometry the way flat panels do, so
-  // this builds the tube wall directly as a grid of small quads wrapped
-  // around the circumference — each grid cell is included only if the pipe
-  // mask says "solid" there, so cutouts appear as literal gaps in the mesh.
-  // Resolution note: this is a coarse quad-grid approximation, not the
-  // actual traced vector outline (that's what the 2D "laser-cut panel" card
-  // and the exported SVG/DXF/PDF use — those stay exact regardless of this
-  // number). Higher segU/segV just makes the 3D PREVIEW's blocky "voxel"
-  // look closer to the real smooth cutout, capped so triangle count stays
-  // mobile-friendly even on a large-radius pipe.
+function buildPipeMesh3D(pipePanel, R, depth, thickness, matColor){
+  // Builds a FLAT shape+holes exactly the same way buildPanelMesh() does for
+  // the box panels — using the same getCutoutPolygonsMM() vector data that
+  // drives the 2D "laser-cut panel" card and the exported SVG/DXF/PDF — then
+  // "bends" every vertex of the resulting geometry onto the cylinder
+  // (arc-length position -> angle, extrusion depth -> radius). That's what
+  // guarantees the 3D preview's cutout edges are the exact same curve as
+  // what actually gets cut, not a separate lower-resolution approximation.
   const circumference = 2*Math.PI*R;
-  // Resolution note: this is a coarse quad-grid approximation, not the
-  // actual traced vector outline (that's what the 2D "laser-cut panel" card
-  // and the exported SVG/DXF/PDF use — those stay exact regardless of this
-  // number). Higher segU/segV just makes the 3D PREVIEW's blocky "voxel"
-  // look closer to the real smooth cutout, capped so triangle count stays
-  // mobile-friendly even on a large-radius pipe.
-  const segU = Math.max(96, Math.min(240, Math.round(circumference/1.5)));
-  const segV = Math.max(8, Math.min(120, Math.round(depth/1.5)));
-  const positions=[], normals=[], indices=[];
+  const holes = getCutoutPolygonsMM(pipePanel, circumference, depth).filter(h => polygonAreaMM(h) > 0.05);
 
-  function sampleSolid(u,v){
-    // u wraps around [0,circumference), v in [0,depth]
-    let uu = ((u % circumference)+circumference) % circumference;
-    const px = Math.min(pipePanel.w-1, Math.max(0, Math.floor((uu/circumference)*pipePanel.w)));
-    const py = Math.min(pipePanel.h-1, Math.max(0, Math.floor((v/depth)*pipePanel.h)));
-    return pipePanel.mask[py*pipePanel.w+px] === 0; // 0 = solid material, 1 = cutout
+  const shape = new THREE.Shape();
+  shape.moveTo(0,0); shape.lineTo(circumference,0); shape.lineTo(circumference,depth); shape.lineTo(0,depth); shape.closePath();
+  holes.forEach(hole=>{
+    if(hole.length<3) return;
+    const path = new THREE.Path();
+    hole.forEach(([u,v],i)=>{ if(i===0) path.moveTo(u,v); else path.lineTo(u,v); });
+    shape.holes.push(path);
+  });
+
+  const geo = new THREE.ExtrudeGeometry(shape, {depth:thickness, bevelEnabled:false, curveSegments:1, steps:1});
+  const pos = geo.attributes.position;
+  for(let i=0;i<pos.count;i++){
+    const sx=pos.getX(i), sy=pos.getY(i), sz=pos.getZ(i);
+    const theta = sx/R;             // arc-length position -> angle around the tube
+    const radius = R + sz;          // wall thickness extrudes radially outward
+    pos.setXYZ(i, radius*Math.cos(theta), radius*Math.sin(theta), sy);
   }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals(); // flat-shape normals are meaningless after bending — recompute from the curved result
 
-  let vi=0;
-  for(let i=0;i<segU;i++){
-    const u0 = (i/segU)*circumference, u1 = ((i+1)/segU)*circumference;
-    const th0 = u0/R, th1 = u1/R;
-    for(let j=0;j<segV;j++){
-      const v0 = (j/segV)*depth, v1 = ((j+1)/segV)*depth;
-      const uc = (u0+u1)/2, vc = (v0+v1)/2;
-      if(!sampleSolid(uc,vc)) continue; // cutout cell -> leave a gap
-      const p00=[R*Math.cos(th0), R*Math.sin(th0), v0];
-      const p10=[R*Math.cos(th1), R*Math.sin(th1), v0];
-      const p11=[R*Math.cos(th1), R*Math.sin(th1), v1];
-      const p01=[R*Math.cos(th0), R*Math.sin(th0), v1];
-      const nx=Math.cos((th0+th1)/2), ny=Math.sin((th0+th1)/2);
-      for(const p of [p00,p10,p11,p01]) positions.push(...p);
-      for(let k=0;k<4;k++) normals.push(nx,ny,0);
-      indices.push(vi,vi+1,vi+2, vi,vi+2,vi+3);
-      vi+=4;
-    }
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
-  geo.setIndex(indices);
   const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
-  const mesh = new THREE.Mesh(geo, mat);
-  return mesh;
+  return new THREE.Mesh(geo, mat);
 }
 
 function buildPanelMesh(polyOutlineMM, holePolysMM, offsetU, thickness, basis, position, matColor){
@@ -321,7 +297,7 @@ function rebuild3DScene(proj){
     const panelColor = 0x2a3838;
 
     if(proj.isPipe){
-      const mesh = buildPipeMesh3D(proj.panels.pipe, proj.R, depth, panelColor);
+      const mesh = buildPipeMesh3D(proj.panels.pipe, proj.R, depth, thick, panelColor);
       scene3D.panelGroup.add(mesh);
     } else {
     const defs = [

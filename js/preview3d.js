@@ -137,22 +137,36 @@ function pointInPolygonMM(x, y, poly){
 
 function buildPipeMesh3D(pipePanel, R, depth, matColor){
   // Every quad is computed directly in cylindrical coordinates from the
-  // start (angle -> R*cos/R*sin, no separate flat-shape-then-bend stage —
-  // that approach kept producing distorted geometry). Solid/cutout is
-  // decided with a point-in-polygon test against the SAME smooth vector
-  // hole outlines (getCutoutPolygonsMM) that drive the 2D "laser-cut panel"
-  // card and the exported SVG/DXF/PDF, so cell edges follow the real cutout
-  // shape rather than the raw raster mask.
+  // start (angle -> R*cos/R*sin), and solid/cutout is decided with a
+  // point-in-polygon test against the SAME smooth vector hole outlines
+  // (getCutoutPolygonsMM) that drive the 2D "laser-cut panel" card and the
+  // exported SVG/DXF/PDF. Note: however accurate that per-cell test is, the
+  // RESULT is still quantized to the grid's cell size — a discrete grid can
+  // only approach vector smoothness by getting finer, never fully match it.
+  // Density here scales with physical size (mm), not a fixed cell count, so
+  // it stays fine enough to keep that quantization well below what's
+  // visible at normal zoom, with a bounding-box pre-check per hole so the
+  // extra cells don't blow up compute time.
   const circumference = 2*Math.PI*R;
   const holes = getCutoutPolygonsMM(pipePanel, circumference, depth).filter(h => polygonAreaMM(h) > 0.05);
+  const holeBoxes = holes.map(h=>{
+    let minU=Infinity,maxU=-Infinity,minV=Infinity,maxV=-Infinity;
+    for(const [u,v] of h){ if(u<minU)minU=u; if(u>maxU)maxU=u; if(v<minV)minV=v; if(v>maxV)maxV=v; }
+    return {minU,maxU,minV,maxV};
+  });
 
   function isCutout(u, v){
-    for(const hole of holes) if(pointInPolygonMM(u, v, hole)) return true;
+    for(let hi=0; hi<holes.length; hi++){
+      const b = holeBoxes[hi];
+      if(u<b.minU || u>b.maxU || v<b.minV || v>b.maxV) continue; // fast reject, skip the full test
+      if(pointInPolygonMM(u, v, holes[hi])) return true;
+    }
     return false;
   }
 
-  const segU = 120;
-  const segV = Math.max(8, Math.round(depth/2));
+  const cellsPerMM = 1.5;
+  const segU = Math.max(120, Math.min(500, Math.round(circumference*cellsPerMM)));
+  const segV = Math.max(20, Math.min(300, Math.round(depth*cellsPerMM)));
   const positions=[], normals=[], indices=[];
   let vi=0;
   for(let i=0;i<segU;i++){

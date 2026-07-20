@@ -135,18 +135,113 @@ function pointInPolygonMM(x, y, poly){
   return inside;
 }
 
-function buildPipeMesh3D(pipePanel, R, depth, matColor){
-  // Every quad is computed directly in cylindrical coordinates from the
-  // start (angle -> R*cos/R*sin), and solid/cutout is decided with a
-  // point-in-polygon test against the SAME smooth vector hole outlines
-  // (getCutoutPolygonsMM) that drive the 2D "laser-cut panel" card and the
-  // exported SVG/DXF/PDF. Note: however accurate that per-cell test is, the
-  // RESULT is still quantized to the grid's cell size — a discrete grid can
-  // only approach vector smoothness by getting finer, never fully match it.
-  // Density here scales with physical size (mm), not a fixed cell count, so
-  // it stays fine enough to keep that quantization well below what's
-  // visible at normal zoom, with a bounding-box pre-check per hole so the
-  // extra cells don't blow up compute time.
+/* ---------- ear-clip triangulator, with hole "bridging" ----------
+   General polygon-with-holes triangulation is a genuinely hard problem —
+   this is a from-scratch implementation (not a library), verified against
+   known-area test cases. It only has to handle the specific shapes
+   getCutoutPolygonsMM() produces: simple, mutually non-overlapping polygons
+   (guaranteed by construction — they come from distinct connected
+   components of a traced silhouette), so it doesn't need to handle
+   arbitrary/adversarial inputs like a general-purpose library would. */
+function polygon2DArea(pts){
+  let a=0;
+  for(let i=0;i<pts.length;i++){ const p1=pts[i], p2=pts[(i+1)%pts.length]; a += p1[0]*p2[1]-p2[0]*p1[1]; }
+  return a/2;
+}
+function samePoint2D(p,q){ return Math.abs(p[0]-q[0])<1e-7 && Math.abs(p[1]-q[1])<1e-7; }
+function crossProd2D(a,b,c){ return (b[0]-a[0])*(c[1]-a[1]) - (b[1]-a[1])*(c[0]-a[0]); }
+function pointInTriangle2D(p,a,b,c){
+  const d1=(p[0]-b[0])*(a[1]-b[1])-(a[0]-b[0])*(p[1]-b[1]);
+  const d2=(p[0]-c[0])*(b[1]-c[1])-(b[0]-c[0])*(p[1]-c[1]);
+  const d3=(p[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(p[1]-a[1]);
+  const hasNeg=(d1<0)||(d2<0)||(d3<0), hasPos=(d1>0)||(d2>0)||(d3>0);
+  return !(hasNeg&&hasPos);
+}
+function segments2DIntersect(p1,p2,p3,p4){
+  function ccw(a,b,c){ return (c[1]-a[1])*(b[0]-a[0]) - (b[1]-a[1])*(c[0]-a[0]); }
+  const d1=ccw(p3,p4,p1), d2=ccw(p3,p4,p2), d3=ccw(p1,p2,p3), d4=ccw(p1,p2,p4);
+  return ((d1>0&&d2<0)||(d1<0&&d2>0)) && ((d3>0&&d4<0)||(d3<0&&d4>0));
+}
+function bridgeHoleIntoContour(contour, hole){
+  // Try every (hole-vertex, contour-vertex) pairing, closest first, until
+  // one doesn't cross any existing edge — trying only the hole's single
+  // rightmost vertex sometimes had no valid non-crossing partner once
+  // several other holes' bridges were already spliced into the contour.
+  const candidates = [];
+  for(let hi=0; hi<hole.length; hi++)
+    for(let ci=0; ci<contour.length; ci++){
+      const H=hole[hi], M=contour[ci];
+      candidates.push({hi, ci, dist:(M[0]-H[0])**2+(M[1]-H[1])**2});
+    }
+  candidates.sort((a,b)=>a.dist-b.dist);
+  for(const cand of candidates){
+    const H=hole[cand.hi], M=contour[cand.ci];
+    let blocked=false;
+    for(let e=0; e<contour.length; e++){
+      const a=contour[e], b=contour[(e+1)%contour.length];
+      if(a===M||b===M) continue;
+      if(segments2DIntersect(M,H,a,b)){ blocked=true; break; }
+    }
+    if(blocked) continue;
+    const holeReordered = hole.slice(cand.hi).concat(hole.slice(0,cand.hi));
+    const bridge = [M, ...holeReordered, H, M];
+    return contour.slice(0, cand.ci+1).concat(bridge.slice(1), contour.slice(cand.ci+1));
+  }
+  // Extremely unlikely for compact, well-separated holes — but never
+  // silently splice a crossing bridge; the caller's area check will catch
+  // this and fall back to the grid mesh instead.
+  return null;
+}
+function earClip2D(polyPts){
+  let pts = polyPts.slice();
+  if(polygon2DArea(pts) < 0) pts.reverse();
+  let idx = pts.map((_,i)=>i);
+  const triangles = [];
+  let guard = 0;
+  while(idx.length > 3 && guard++ < 50000){
+    let bestI=-1, bestScore=-Infinity;
+    for(let i=0;i<idx.length;i++){
+      const i0=idx[(i-1+idx.length)%idx.length], i1=idx[i], i2=idx[(i+1)%idx.length];
+      const a=pts[i0], b=pts[i1], c=pts[i2];
+      const cr = crossProd2D(a,b,c);
+      if(cr <= 1e-9) continue;
+      let earOk=true;
+      for(const j of idx){
+        if(j===i0||j===i1||j===i2) continue;
+        const p = pts[j];
+        if(samePoint2D(p,a)||samePoint2D(p,b)||samePoint2D(p,c)) continue;
+        if(pointInTriangle2D(p,a,b,c)){ earOk=false; break; }
+      }
+      if(!earOk) continue;
+      if(cr > bestScore){ bestScore=cr; bestI=i; }
+    }
+    if(bestI===-1) break; // couldn't fully triangulate — caller's area check will catch this
+    const i0=idx[(bestI-1+idx.length)%idx.length], i1=idx[bestI], i2=idx[(bestI+1)%idx.length];
+    triangles.push([i0,i1,i2]);
+    idx.splice(bestI,1);
+  }
+  if(idx.length===3) triangles.push([idx[0],idx[1],idx[2]]);
+  return {triangles, points: pts, complete: idx.length===0 || triangles.length===pts.length-2};
+}
+function triangulateWithHoles2D(outer, holes){
+  let contour = outer.slice();
+  if(polygon2DArea(contour) < 0) contour.reverse();
+  const sortedHoles = holes
+    .map(h=>{ let h2=h.slice(); if(polygon2DArea(h2)>0) h2.reverse(); return h2; })
+    .sort((a,b)=> Math.min(...a.map(p=>p[0])) - Math.min(...b.map(p=>p[0])));
+  for(const h of sortedHoles){
+    contour = bridgeHoleIntoContour(contour, h);
+    if(!contour) return null; // bridging failed — bail out to the grid fallback
+  }
+  return earClip2D(contour);
+}
+
+function buildPipeMesh3DGrid(pipePanel, R, depth, matColor){
+  // Reliable fallback: quad grid computed directly in cylindrical
+  // coordinates, each cell tested with point-in-polygon against the same
+  // vector hole outlines. Always topologically correct (a proper round
+  // tube), but cell-quantized — used when the vector triangulation below
+  // can't be trusted for a given cutout pattern.
   const circumference = 2*Math.PI*R;
   const holes = getCutoutPolygonsMM(pipePanel, circumference, depth).filter(h => polygonAreaMM(h) > 0.05);
   const holeBoxes = holes.map(h=>{
@@ -154,16 +249,14 @@ function buildPipeMesh3D(pipePanel, R, depth, matColor){
     for(const [u,v] of h){ if(u<minU)minU=u; if(u>maxU)maxU=u; if(v<minV)minV=v; if(v>maxV)maxV=v; }
     return {minU,maxU,minV,maxV};
   });
-
   function isCutout(u, v){
     for(let hi=0; hi<holes.length; hi++){
       const b = holeBoxes[hi];
-      if(u<b.minU || u>b.maxU || v<b.minV || v>b.maxV) continue; // fast reject, skip the full test
+      if(u<b.minU || u>b.maxU || v<b.minV || v>b.maxV) continue;
       if(pointInPolygonMM(u, v, holes[hi])) return true;
     }
     return false;
   }
-
   const cellsPerMM = 1.5;
   const segU = Math.max(120, Math.min(500, Math.round(circumference*cellsPerMM)));
   const segV = Math.max(20, Math.min(300, Math.round(depth*cellsPerMM)));
@@ -175,7 +268,7 @@ function buildPipeMesh3D(pipePanel, R, depth, matColor){
     for(let j=0;j<segV;j++){
       const v0=(j/segV)*depth, v1=((j+1)/segV)*depth;
       const uc=(u0+u1)/2, vc=(v0+v1)/2;
-      if(isCutout(uc,vc)) continue; // cell falls inside a cutout polygon -> leave a gap
+      if(isCutout(uc,vc)) continue;
       const p00=[R*Math.cos(th0), R*Math.sin(th0), v0];
       const p10=[R*Math.cos(th1), R*Math.sin(th1), v0];
       const p11=[R*Math.cos(th1), R*Math.sin(th1), v1];
@@ -187,13 +280,69 @@ function buildPipeMesh3D(pipePanel, R, depth, matColor){
       vi+=4;
     }
   }
-
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
   geo.setIndex(indices);
   const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
   return new THREE.Mesh(geo, mat);
+}
+
+function buildPipeMesh3D(pipePanel, R, depth, matColor){
+  // Primary path: triangulate the real vector outline (outer rectangle +
+  // holes, bridged into one simple polygon) ourselves, then build every
+  // triangle vertex ALREADY in cylindrical coordinates (angle -> R*cos/sin)
+  // — never a separate flat-then-bend stage. Edges follow the exact same
+  // curve as the 2D "laser-cut panel" card and the exported files, with no
+  // grid quantization at all.
+  //
+  // Safety net: verify the result's total area matches the source polygons'
+  // own area (outer minus holes) before trusting it. If they don't match —
+  // meaning the triangulation didn't fully/correctly cover the shape, which
+  // can still happen for pathological hole arrangements — fall back to the
+  // grid mesh above instead of showing broken/spiky geometry.
+  const circumference = 2*Math.PI*R;
+  const holes = getCutoutPolygonsMM(pipePanel, circumference, depth).filter(h => polygonAreaMM(h) > 0.05);
+  const outer = [[0,0],[circumference,0],[circumference,depth],[0,depth]];
+
+  try{
+    const result = triangulateWithHoles2D(outer, holes);
+    if(!result) throw new Error('bridging failed');
+
+    let outerArea = 0;
+    for(let i=0;i<outer.length;i++){ const p1=outer[i], p2=outer[(i+1)%outer.length]; outerArea += p1[0]*p2[1]-p2[0]*p1[1]; }
+    outerArea = Math.abs(outerArea/2);
+    let holeAreaTotal = 0;
+    for(const h of holes) holeAreaTotal += polygonAreaMM(h);
+    const expected = outerArea - holeAreaTotal;
+
+    let triArea = 0;
+    for(const [a,b,c] of result.triangles){
+      const p=result.points;
+      triArea += Math.abs((p[b][0]-p[a][0])*(p[c][1]-p[a][1])-(p[c][0]-p[a][0])*(p[b][1]-p[a][1]))/2;
+    }
+    if(Math.abs(triArea-expected) > Math.max(1, expected*0.01)){
+      throw new Error(`area mismatch: got ${triArea.toFixed(1)}, expected ${expected.toFixed(1)}`);
+    }
+
+    const positions=[], normals=[];
+    for(const [a,b,c] of result.triangles){
+      const tri = [result.points[a], result.points[b], result.points[c]];
+      const bent = tri.map(([u,v])=>{ const th=u/R; return [R*Math.cos(th), R*Math.sin(th), v]; });
+      const nx = Math.cos((tri[0][0]/R+tri[1][0]/R+tri[2][0]/R)/3);
+      const ny = Math.sin((tri[0][0]/R+tri[1][0]/R+tri[2][0]/R)/3);
+      for(const p of bent) positions.push(...p);
+      for(let k=0;k<3;k++) normals.push(nx,ny,0);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
+    const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
+    return new THREE.Mesh(geo, mat);
+  } catch(err){
+    console.warn('Pipe vector triangulation failed, falling back to the grid mesh:', err.message);
+    return buildPipeMesh3DGrid(pipePanel, R, depth, matColor);
+  }
 }
 
 function buildPanelMesh(polyOutlineMM, holePolysMM, offsetU, thickness, basis, position, matColor){

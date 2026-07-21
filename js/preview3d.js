@@ -285,7 +285,9 @@ function buildPipeMesh3DGrid(pipePanel, R, depth, matColor){
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
   geo.setIndex(indices);
   const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
-  return new THREE.Mesh(geo, mat);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.userData.pipeMeshMode = 'grid';
+  return mesh;
 }
 
 function buildPipeMesh3D(pipePanel, R, depth, matColor){
@@ -338,10 +340,14 @@ function buildPipeMesh3D(pipePanel, R, depth, matColor){
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals,3));
     const mat = new THREE.MeshBasicMaterial({color:matColor, side:THREE.DoubleSide});
-    return new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.userData.pipeMeshMode = 'vector';
+    return mesh;
   } catch(err){
     console.warn('Pipe vector triangulation failed, falling back to the grid mesh:', err.message);
-    return buildPipeMesh3DGrid(pipePanel, R, depth, matColor);
+    const mesh = buildPipeMesh3DGrid(pipePanel, R, depth, matColor);
+    mesh.userData.pipeMeshFallbackReason = err.message;
+    return mesh;
   }
 }
 
@@ -484,7 +490,15 @@ function rebuild3DScene(proj){
     if(proj.isPipe){
       const mesh = buildPipeMesh3D(proj.panels.pipe, proj.R, depth, panelColor);
       scene3D.panelGroup.add(mesh);
+      const hint = document.getElementById('preview3dHint');
+      if(hint){
+        hint.textContent = mesh.userData.pipeMeshMode === 'vector'
+          ? 'Drag to rotate · pinch or scroll to zoom · pipe holes: vector (exact match to export)'
+          : 'Drag to rotate · pinch or scroll to zoom · pipe holes: grid fallback (this cutout pattern couldn\'t be traced exactly — export files are still exact)';
+      }
     } else {
+    const hintReset = document.getElementById('preview3dHint');
+    if(hintReset) hintReset.textContent = 'Drag to rotate · pinch or scroll to zoom · built from the actual cutout data';
     const defs = [
       { key:'top',    dimW:boxW, offsetU:boxW/2,
         basis:{x:V3(1,0,0), y:V3(0,0,1), z:V3(0,1,0)}, pos:V3(0, boxH/2, 0) },

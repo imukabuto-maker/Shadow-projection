@@ -350,7 +350,6 @@ function buildPipeMesh3D(pipePanel, R, depth, matColor){
     return mesh;
   }
 }
-
 function buildPanelMesh(polyOutlineMM, holePolysMM, offsetU, thickness, basis, position, matColor){
   const shape = new THREE.Shape();
   polyOutlineMM.forEach(([u,v],i)=>{ const x=u-offsetU; if(i===0) shape.moveTo(x,v); else shape.lineTo(x,v); });
@@ -494,7 +493,7 @@ function rebuild3DScene(proj){
       if(hint){
         hint.textContent = mesh.userData.pipeMeshMode === 'vector'
           ? 'Drag to rotate · pinch or scroll to zoom · pipe holes: vector (exact match to export)'
-          : 'Drag to rotate · pinch or scroll to zoom · pipe holes: grid fallback (this cutout pattern couldn\'t be traced exactly — export files are still exact)';
+          : `Drag to rotate · pinch or scroll to zoom · pipe holes: grid fallback (${mesh.userData.pipeMeshFallbackReason || 'unknown reason'})`;
       }
     } else {
     const hintReset = document.getElementById('preview3dHint');
